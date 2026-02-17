@@ -41,6 +41,7 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
 - **Auth** (`/api/auth`)
   - `POST /api/auth/register` — body: `{ "email", "password", "appId", "name?" }` → returns `{ user, token }`
   - `POST /api/auth/login` — body: `{ "email", "password", "appId" }` → returns `{ user, token }`
+  - `POST /api/auth/refresh` — issue a new JWT from an existing (non-expired) token (requires `Authorization: Bearer <token>`)
   - `GET /api/auth/me` — current user in this app (requires `Authorization: Bearer <token>`)
   - `POST /api/auth/logout` — client discards token (stateless JWT; returns `{ ok: true }`)
 - **Users** (require `Authorization: Bearer <token>`; scoped by app from JWT)

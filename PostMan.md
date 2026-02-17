@@ -61,6 +61,7 @@ All auth endpoints live under `/api/auth`. You need an **appId** (from step 1) f
 |--------|----------|---------------|-------------|
 | POST   | `/api/auth/register` | No  | Create user + profile in app, returns `user` + `token` |
 | POST   | `/api/auth/login`    | No  | Login for app, returns `user` + `token` |
+| POST   | `/api/auth/refresh`  | Yes | Issue a new JWT from an existing (non-expired) token |
 | GET    | `/api/auth/me`       | Yes | Current user in this app (same as `/api/users/me`) |
 | POST   | `/api/auth/logout`   | No  | Client should discard token (stateless JWT) |
 

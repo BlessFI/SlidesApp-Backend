@@ -87,6 +87,31 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // Refresh: issue a new JWT from an existing (non-expired) one
+  fastify.post(
+    "/refresh",
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const authHeader = request.headers.authorization?.replace(/^Bearer\s+/i, "");
+      if (!authHeader) {
+        return reply.status(401).send({ error: "Missing Authorization header" });
+      }
+      try {
+        const payload = await fastify.verifyToken(authHeader);
+        if (!payload?.sub || !payload?.email || !payload?.appId) {
+          return reply.status(401).send({ error: "Invalid token payload" });
+        }
+        const token = fastify.signToken({
+          sub: payload.sub,
+          email: payload.email,
+          appId: payload.appId,
+        });
+        return reply.send({ token });
+      } catch {
+        return reply.status(401).send({ error: "Invalid or expired token" });
+      }
+    }
+  );
+
   // Logout: client discards token (stateless JWT; no server-side invalidation)
   fastify.post("/logout", async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send({ ok: true, message: "Client should discard the token" });
