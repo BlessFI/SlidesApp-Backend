@@ -294,7 +294,91 @@ App context via **body `app_id`**, **header `X-App-Id`**, or **JWT** (if present
 
 ---
 
-## 6. Health (no auth)
+## 6. Video interactions (like, up_vote, super_vote)
+
+Require **Authorization: Bearer {{token}}**. Video must belong to the same app as the token.
+
+### POST /api/videos/:videoId/vote
+
+Records a like, up_vote, or super_vote on a video and increments the video’s counts.
+
+| Field   | Value |
+|--------|--------|
+| **Method** | `POST` |
+| **URL**    | `{{baseUrl}}/api/videos/{{videoId}}/vote` |
+| **Headers** | `Content-Type: application/json`, `Authorization: Bearer {{token}}` |
+| **Body** (raw JSON) | See below |
+
+**Request body:**
+
+| Field          | Type   | Required | Description |
+|----------------|--------|----------|-------------|
+| `voteType`     | string | Yes      | `"like"` \| `"up_vote"` \| `"super_vote"` |
+| `gestureSource`| string | No       | e.g. `double_tap`, `triple_tap`, `s_gesture`, `clap` |
+| `requestId`    | string | No       | Feed session id |
+| `rankPosition` | number | No       | Position in feed when voted |
+| `feedMode`     | string | No       | `default` \| `inform` |
+
+**Example – Like (double-tap):**
+```json
+{
+  "voteType": "like",
+  "gestureSource": "double_tap",
+  "requestId": "a1b2c3d4-...",
+  "rankPosition": 1,
+  "feedMode": "default"
+}
+```
+
+**Example – Up vote (triple-tap):**
+```json
+{
+  "voteType": "up_vote",
+  "gestureSource": "triple_tap",
+  "requestId": "a1b2c3d4-...",
+  "rankPosition": 1
+}
+```
+
+**Example – Super vote (S-gesture):**
+```json
+{
+  "voteType": "super_vote",
+  "gestureSource": "s_gesture",
+  "requestId": "a1b2c3d4-...",
+  "rankPosition": 2,
+  "feedMode": "default"
+}
+```
+
+**Response (201):**
+```json
+{
+  "vote": {
+    "id": "vote-uuid",
+    "videoId": "video-uuid",
+    "voteType": "like",
+    "gestureSource": "double_tap",
+    "weight": 1,
+    "isDenied": false,
+    "denyReason": null,
+    "createdAt": "2025-02-17T12:00:00.000Z"
+  },
+  "counts": {
+    "likeCount": 5,
+    "upVoteCount": 2,
+    "superVoteCount": 0
+  }
+}
+```
+
+If the vote is denied (e.g. daily limit), `vote.isDenied` is `true` and `vote.denyReason` may be set; `counts` are not incremented for that vote.
+
+**Errors:** `400` invalid `voteType`; `401` missing/invalid token; `404` video not found or not in this app.
+
+---
+
+## 7. Health (no auth)
 
 | Field   | Value |
 |--------|--------|
@@ -313,6 +397,7 @@ App context via **body `app_id`**, **header `X-App-Id`**, or **JWT** (if present
 | `appId`   | (copy from Create App response `id`) | After **Create App** |
 | `token`   | (copy from Register/Login response `token`) | After **Register** or **Login** |
 | `userId`  | (copy from `user.id` or from list users) | When testing GET /api/users/:id |
+| `videoId` | (copy from feed item `id` or video uuid) | When testing POST /api/videos/:videoId/vote |
 
 ---
 
@@ -324,5 +409,6 @@ App context via **body `app_id`**, **header `X-App-Id`**, or **JWT** (if present
 4. **GET** `/api/users` with same header to list users in the app.
 5. **POST** `/api/auth/logout` when done (client discards token).
 6. **POST** `/events` with `app_id` in body (or `X-App-Id`) to log an event; **GET** `/events?app_id=...` to query.
+7. **GET** `/api/feed?app_id={{appId}}` → copy a video `id` → set `videoId`. **POST** `/api/videos/{{videoId}}/vote` with body `{ "voteType": "like" }` and `Authorization: Bearer {{token}}`.
 
 If you use a second app `id` in login, the token will be for that app and `/api/users` will show only users in that app (multi-tenant isolation).
