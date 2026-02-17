@@ -1,6 +1,3 @@
-// Prisma schema for Postgres / NeonDB (multi-tenant)
-
-//npx prisma db push
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,34 +8,34 @@ datasource db {
 }
 
 model User {
-  id         String     @id @default(cuid())
-  email      String     @unique
-  password   String
-  name       String?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  profiles   UserAppProfile[]
-  videos     Video[]    @relation("VideoCreator")
-  votes      Vote[]
-  purchases  Purchase[]
-  events     Event[]
-  reports    Report[]
+  id        String           @id @default(cuid())
+  email     String           @unique
+  password  String
+  name      String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  events    Event[]
+  purchases Purchase[]
+  reports   Report[]
+  profiles  UserAppProfile[]
+  videos    Video[]          @relation("VideoCreator")
+  votes     Vote[]
 }
 
 model App {
-  id             String         @id @default(cuid())
-  name           String
-  slug           String         @unique
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  profiles       UserAppProfile[]
-  videos         Video[]
-  videoAssets    VideoAsset[]
-  votes          Vote[]
-  purchases      Purchase[]
+  id            String           @id @default(cuid())
+  name          String
+  slug          String           @unique
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
   events        Event[]
-  taxonomyNodes  TaxonomyNode[]
-  reports        Report[]
+  purchases     Purchase[]
+  reports       Report[]
+  taxonomyNodes TaxonomyNode[]
+  profiles      UserAppProfile[]
+  videoAssets   VideoAsset[]
+  videos        Video[]
+  votes         Vote[]
 }
 
 model UserAppProfile {
@@ -49,88 +46,83 @@ model UserAppProfile {
   displayName String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   app         App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, appId])
   @@map("user_app_profiles")
 }
 
 model TaxonomyNode {
-  id        String   @id @default(uuid()) @db.Uuid
-  appId     String   @map("app_id")
-  kind      String   // category | topic | subject
-  name      String
-  slug      String?
-  parentId  String?  @map("parent_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  app       App     @relation(fields: [appId], references: [id], onDelete: Cascade)
-  parent    TaxonomyNode?  @relation("TaxonomyHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children  TaxonomyNode[] @relation("TaxonomyHierarchy")
-  videosAsCategory Video[] @relation("VideoCategory")
-  videosAsTopic    Video[] @relation("VideoTopic")
-  videosAsSubject  Video[] @relation("VideoSubject")
+  id               String         @id @default(uuid()) @db.Uuid
+  appId            String         @map("app_id")
+  kind             String
+  name             String
+  slug             String?
+  parentId         String?        @map("parent_id") @db.Uuid
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  app              App            @relation(fields: [appId], references: [id], onDelete: Cascade)
+  parent           TaxonomyNode?  @relation("TaxonomyHierarchy", fields: [parentId], references: [id])
+  children         TaxonomyNode[] @relation("TaxonomyHierarchy")
+  videosAsCategory Video[]        @relation("VideoCategory")
+  videosAsSubject  Video[]        @relation("VideoSubject")
+  videosAsTopic    Video[]        @relation("VideoTopic")
 
   @@unique([appId, kind, slug])
   @@map("taxonomy_nodes")
 }
 
 model Video {
-  id              String    @id @default(uuid()) @db.Uuid
-  appId           String    @map("app_id")
-  creatorId       String    @map("creator_id")
-  status          String    @default("ready") // draft | processing | ready | blocked
-  title           String?
-  description     String?
-  topicId         String?   @map("topic_id")    @db.Uuid
-  categoryId      String?   @map("category_id") @db.Uuid
-  subjectId       String?   @map("subject_id")  @db.Uuid
-  durationMs      Int       @map("duration_ms")
-  aspectRatio     Decimal?  @map("aspect_ratio") @db.Decimal(4, 2)
-  primaryAssetId  String?   @map("primary_asset_id") @db.Uuid
-  rankingScore    Float     @default(0) @map("ranking_score")
-  likeCount       Int       @default(0) @map("like_count")
-  upVoteCount     Int       @default(0) @map("up_vote_count")
-  superVoteCount  Int       @default(0) @map("super_vote_count")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-
-  // MRSS (Media RSS) – for feed export and client consumption
-  link            String?   // item <link> / canonical page URL
-  guid            String?   // optional stable id (defaults to id if null)
-  keywords        String?   // media:keywords (comma-separated)
-  rating          String?   // media:rating e.g. nonadult | adult
-  credit          String?   // media:credit (e.g. creator name)
-  copyright       String?   // media:copyright
-  license         String?   // media:license URL
-  pubDate         DateTime? @map("pub_date")   // optional; if null use createdAt for MRSS
-
-  app             App        @relation(fields: [appId], references: [id], onDelete: Cascade)
-  creator         User       @relation("VideoCreator", fields: [creatorId], references: [id], onDelete: Cascade)
-  primaryAsset    VideoAsset? @relation("VideoPrimaryAsset", fields: [primaryAssetId], references: [id], onDelete: SetNull)
-  category        TaxonomyNode? @relation("VideoCategory", fields: [categoryId], references: [id], onDelete: SetNull)
-  topic           TaxonomyNode? @relation("VideoTopic", fields: [topicId], references: [id], onDelete: SetNull)
-  subject         TaxonomyNode? @relation("VideoSubject", fields: [subjectId], references: [id], onDelete: SetNull)
-  assets          VideoAsset[]
-  votes           Vote[]
-  events          Event[]
-  reports         Report[]
+  id             String        @id @default(uuid()) @db.Uuid
+  appId          String        @map("app_id")
+  creatorId      String        @map("creator_id")
+  status         String        @default("ready")
+  title          String?
+  description    String?
+  topicId        String?       @map("topic_id") @db.Uuid
+  categoryId     String?       @map("category_id") @db.Uuid
+  subjectId      String?       @map("subject_id") @db.Uuid
+  durationMs     Int           @map("duration_ms")
+  aspectRatio    Decimal?      @map("aspect_ratio") @db.Decimal(4, 2)
+  primaryAssetId String?       @map("primary_asset_id") @db.Uuid
+  rankingScore   Float         @default(0) @map("ranking_score")
+  likeCount      Int           @default(0) @map("like_count")
+  upVoteCount    Int           @default(0) @map("up_vote_count")
+  superVoteCount Int           @default(0) @map("super_vote_count")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  copyright      String?
+  credit         String?
+  guid           String?
+  keywords       String?
+  license        String?
+  link           String?
+  pubDate        DateTime?     @map("pub_date")
+  rating         String?
+  events         Event[]
+  reports        Report[]
+  assets         VideoAsset[]
+  app            App           @relation(fields: [appId], references: [id], onDelete: Cascade)
+  category       TaxonomyNode? @relation("VideoCategory", fields: [categoryId], references: [id])
+  creator        User          @relation("VideoCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  primaryAsset   VideoAsset?   @relation("VideoPrimaryAsset", fields: [primaryAssetId], references: [id])
+  subject        TaxonomyNode? @relation("VideoSubject", fields: [subjectId], references: [id])
+  topic          TaxonomyNode? @relation("VideoTopic", fields: [topicId], references: [id])
+  votes          Vote[]
 
   @@index([appId, status])
   @@index([appId, rankingScore(sort: Desc)])
   @@map("videos")
 }
 
-// MRSS: media:content (url=cdnUrl, type=mimeType, duration/width/height/fileSize) | media:thumbnail (assetType=thumbnail)
 model VideoAsset {
   id              String   @id @default(uuid()) @db.Uuid
   appId           String   @map("app_id")
   videoId         String   @map("video_id") @db.Uuid
-  assetType       String   @map("asset_type")   // master | hls | mp4 | thumbnail
-  variantLabel    String?  @map("variant_label") // 1080p | 720p | 360p | poster
-  storageProvider String   @map("storage_provider") // r2 | s3
+  assetType       String   @map("asset_type")
+  variantLabel    String?  @map("variant_label")
+  storageProvider String   @map("storage_provider")
   storageKey      String   @map("storage_key")
   cdnUrl          String   @map("cdn_url")
   mimeType        String?  @map("mime_type")
@@ -141,10 +133,9 @@ model VideoAsset {
   isPrimary       Boolean  @default(false) @map("is_primary")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
-
-  app   App   @relation(fields: [appId], references: [id], onDelete: Cascade)
-  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  videoAsPrimary Video[] @relation("VideoPrimaryAsset")
+  app             App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  video           Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoAsPrimary  Video[]  @relation("VideoPrimaryAsset")
 
   @@map("video_assets")
 }
@@ -154,19 +145,18 @@ model Vote {
   appId         String   @map("app_id")
   videoId       String   @map("video_id") @db.Uuid
   userId        String   @map("user_id")
-  voteType      String   @map("vote_type")   // like | up_vote | super_vote
-  gestureSource String?  @map("gesture_source") // double_tap | triple_tap | clap | s_gesture
-  requestId     String?  @map("request_id") @db.Uuid  // feed session
+  voteType      String   @map("vote_type")
+  gestureSource String?  @map("gesture_source")
+  requestId     String?  @map("request_id") // feed session id (string from client, e.g. req_...)
   rankPosition  Int?     @map("rank_position")
-  feedMode      String?  @map("feed_mode")  // default | inform
-  weight        Int      // 1=like, 3=up_vote, 10=super_vote (example)
+  feedMode      String?  @map("feed_mode")
+  weight        Int
   isDenied      Boolean  @default(false) @map("is_denied")
-  denyReason    String?  @map("deny_reason") // daily_limit, etc.
+  denyReason    String?  @map("deny_reason")
   createdAt     DateTime @default(now()) @map("created_at")
-
-  app   App   @relation(fields: [appId], references: [id], onDelete: Cascade)
-  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  app           App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video         Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
 
   @@index([appId, userId, createdAt])
   @@index([appId, requestId])
@@ -175,22 +165,21 @@ model Vote {
 
 model Purchase {
   id                    String   @id @default(uuid()) @db.Uuid
-  appId                  String   @map("app_id")
-  userId                 String   @map("user_id")
-  purchaseType           String   @map("purchase_type")   // super_vote_pack | boost | subscription
-  referenceId            String?  @map("reference_id") @db.Uuid  // optional: video_id or feature target
-  provider               String   // stripe | apple | google
-  providerTransactionId  String   @map("provider_transaction_id")
-  amountCents            Int      @map("amount_cents")
-  currency               String   @default("USD")
-  quantity               Int      @default(1)
-  status                 String   // pending | completed | failed | refunded
-  metadata               Json?    // raw provider payload (optional)
-  createdAt              DateTime @default(now()) @map("created_at")
-  updatedAt              DateTime @updatedAt @map("updated_at")
-
-  app   App  @relation(fields: [appId], references: [id], onDelete: Cascade)
-  user  User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appId                 String   @map("app_id")
+  userId                String   @map("user_id")
+  purchaseType          String   @map("purchase_type")
+  referenceId           String?  @map("reference_id") @db.Uuid
+  provider              String
+  providerTransactionId String   @map("provider_transaction_id")
+  amountCents           Int      @map("amount_cents")
+  currency              String   @default("USD")
+  quantity              Int      @default(1)
+  status                String
+  metadata              Json?
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  app                   App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("purchases")
 }
@@ -200,37 +189,35 @@ model Report {
   appId      String   @map("app_id")
   reporterId String   @map("reporter_id")
   videoId    String   @map("video_id") @db.Uuid
-  reason     String?  // spam | harassment | other
-  status     String   @default("pending") // pending | reviewed | dismissed | action_taken
+  reason     String?
+  status     String   @default("pending")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
-
-  app      App   @relation(fields: [appId], references: [id], onDelete: Cascade)
-  reporter User  @relation(fields: [reporterId], references: [id], onDelete: Cascade)
-  video    Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  app        App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  reporter   User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  video      Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
 
   @@map("reports")
 }
 
 model Event {
-  id              String   @id @default(uuid()) @db.Uuid
-  appId           String   @map("app_id")
-  userId          String?  @map("user_id")   // nullable for anonymous
-  videoId         String?  @map("video_id")  @db.Uuid  // nullable (depends on event type)
-  requestId       String?  @map("request_id") @db.Uuid
-  rankPosition    Int?     @map("rank_position")
-  feedMode        String?  @map("feed_mode")  // default | inform
-  eventType       String   @map("event_type") // feed | gesture | vote | engagement | system
-  eventName       String   @map("event_name")  // like | up_vote | super_vote | restart | etc.
-  schemaVersion   Int      @map("schema_version")
-  gestureDirection String? @map("gesture_direction") // up | downRight | etc.
-  gestureSource   String?  @map("gesture_source")   // s_button | tap | slide | hold
-  properties      Json?    // extensible structured payload
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  app   App   @relation(fields: [appId], references: [id], onDelete: Cascade)
-  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-  video Video? @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  id               String   @id @default(uuid()) @db.Uuid
+  appId            String   @map("app_id")
+  userId           String?  @map("user_id")
+  videoId          String?  @map("video_id") @db.Uuid
+  requestId        String?  @map("request_id") // feed session id (string from client, e.g. req_...)
+  rankPosition     Int?     @map("rank_position")
+  feedMode         String?  @map("feed_mode")
+  eventType        String   @map("event_type")
+  eventName        String   @map("event_name")
+  schemaVersion    Int      @map("schema_version")
+  gestureDirection String?  @map("gesture_direction")
+  gestureSource    String?  @map("gesture_source")
+  properties       Json?
+  createdAt        DateTime @default(now()) @map("created_at")
+  app              App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  user             User?    @relation(fields: [userId], references: [id])
+  video            Video?   @relation(fields: [videoId], references: [id])
 
   @@index([appId, createdAt])
   @@index([requestId])
