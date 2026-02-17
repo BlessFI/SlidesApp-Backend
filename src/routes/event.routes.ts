@@ -3,6 +3,8 @@
  * - POST /events — store event (body: type, event, request_id, rank_position, feed_mode, item_id, direction_key, gesture_action, gesture_source, ts, ...)
  * - GET  /events — query (?type= &event= &request_id= &item_id= &gesture_direction= &limit=)
  * App context: app_id in body or X-App-Id header. Optional Authorization for userId.
+ *
+ * Gesture direction_key ↔ gesture_action (see src/constants/gestures.ts): up→Next, down→Previous, left→Back, right→Same topic, upLeft→Restart, upRight→Same category, downLeft→Inform, downRight→Same subject.
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";

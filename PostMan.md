@@ -259,7 +259,20 @@ App context via **body `app_id`**, **header `X-App-Id`**, or **JWT** (if present
 }
 ```
 
-**Body (gesture_commit):**
+**Body (gesture_commit):** Send `direction_key` and `gesture_action` per the table below. All 8 are supported.
+
+| direction_key | gesture_action  |
+|---------------|-----------------|
+| `up`          | Next            |
+| `down`        | Previous        |
+| `left`        | Back            |
+| `right`       | Same topic      |
+| `upLeft`      | Restart         |
+| `upRight`     | Same category   |
+| `downLeft`    | Inform          |
+| `downRight`   | Same subject    |
+
+Example:
 ```json
 {
   "type": "gesture",
