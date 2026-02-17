@@ -47,6 +47,8 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
   - `GET /api/users/me` — current user’s profile in this app (same as `GET /api/auth/me`)
   - `GET /api/users` — list users in this app
   - `GET /api/users/:id` — user profile in this app (404 if user has no profile in this app)
+- **Feed** (app-scoped video feed; app via `app_id` query, `X-App-Id` header, or JWT)
+  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=`, `?limit=`, `?cursor=`. Returns `{ items, nextCursor, hasMore }` with each item: `id`, `guid`, `title`, `url` (primary asset CDN URL), `durationMs`, `category`, vote counts, etc.
 - **Events** (M2 event logging; app-scoped via `app_id` in body/header or JWT)
   - `POST /events` — store event. Body: `type`, `event`, optional `request_id`, `rank_position`, `feed_mode`, `item_id`, `direction_key`, `gesture_action`, `gesture_source`, `ts`, … App: `app_id` in body or `X-App-Id` header (or JWT). Returns `{ ok: true, id }`.
   - `GET /events` — query. Params: `?type=`, `?event=`, `?request_id=`, `?item_id=`, `?gesture_direction=`, `?limit=`. App: `app_id` query, `X-App-Id` header, or JWT. Returns `{ events: [...] }`.

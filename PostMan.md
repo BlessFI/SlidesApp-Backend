@@ -192,7 +192,48 @@ Replace `{{userId}}` with a user’s global `id`. Returns 404 if that user has n
 
 ---
 
-## 4. Events (M2 – event logging)
+## 4. Feed (videos by app)
+
+Fetch feed content (ready videos) for an app. App via **query `app_id`**, **header `X-App-Id`**, or **JWT**.
+
+### GET /api/feed
+
+| Field   | Value |
+|--------|--------|
+| **Method** | `GET` |
+| **URL**    | `{{baseUrl}}/api/feed?app_id={{appId}}&limit=20` |
+| **Headers** | Optional `X-App-Id: {{appId}}` or `Authorization: Bearer {{token}}` |
+
+**Query params:** `app_id` (required if no header/JWT), `category_id` (optional), `limit` (default 50, max 100), `cursor` (for next page).
+
+**Response (200):**
+```json
+{
+  "items": [
+    {
+      "id": "video-uuid",
+      "guid": "1",
+      "title": "Banyan Trees",
+      "description": null,
+      "durationMs": 60000,
+      "aspectRatio": 0.56,
+      "url": "https://pub-xxx.r2.dev/Banyan_Trees.mp4",
+      "thumbnailUrl": null,
+      "category": { "id": "...", "name": "News", "slug": "news" },
+      "likeCount": 0,
+      "upVoteCount": 0,
+      "superVoteCount": 0,
+      "createdAt": "2025-02-14T..."
+    }
+  ],
+  "nextCursor": "video-uuid-for-next-page",
+  "hasMore": true
+}
+```
+
+---
+
+## 5. Events (M2 – event logging)
 
 App context via **body `app_id`**, **header `X-App-Id`**, or **JWT** (if present). Optional auth for anonymous events.
 
@@ -253,7 +294,7 @@ App context via **body `app_id`**, **header `X-App-Id`**, or **JWT** (if present
 
 ---
 
-## 5. Health (no auth)
+## 6. Health (no auth)
 
 | Field   | Value |
 |--------|--------|

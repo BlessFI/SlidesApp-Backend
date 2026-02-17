@@ -29,7 +29,7 @@ export async function createEvent(data: CreateEventInput) {
       schemaVersion: data.schemaVersion ?? 1,
       gestureDirection: data.gestureDirection ?? undefined,
       gestureSource: data.gestureSource ?? undefined,
-      properties: data.properties ?? undefined,
+      properties: data.properties != null ? (data.properties as object) : undefined,
     },
   });
 }
@@ -46,7 +46,7 @@ export interface ListEventsQuery {
 
 export async function listEvents(query: ListEventsQuery) {
   const limit = Math.min(Math.max(1, query.limit ?? 100), 500);
-  const where: Parameters<typeof prisma.event.findMany>[0]["where"] = {
+  const where: Record<string, unknown> = {
     appId: query.appId,
   };
   if (query.type) where.eventType = query.type;
