@@ -118,6 +118,7 @@ export async function createVideo(input: CreateVideoInput) {
     },
   });
 
+  // MP4 upload + HLS run in the worker; API returns immediately
   const enqueued = await enqueueProcessVideo(video.id, input.appId, sourcePath);
   if (!enqueued) {
     processVideo({ videoId: video.id, appId: input.appId, sourcePath })

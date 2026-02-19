@@ -218,7 +218,8 @@ Fetch feed content (ready videos) for an app. App via **query `app_id`**, **head
       "description": null,
       "durationMs": 60000,
       "aspectRatio": 0.56,
-      "url": "https://pub-xxx.r2.dev/Banyan_Trees.mp4",
+      "url": "https://pub-xxx.r2.dev/.../hls/master.m3u8",
+      "mp4Url": "https://pub-xxx.r2.dev/.../source.mp4",
       "thumbnailUrl": null,
       "category": { "id": "...", "name": "News", "slug": "news" },
       "likeCount": 0,
@@ -379,6 +380,20 @@ Use this to **fetch a video you uploaded** (e.g. to poll until `status` is `"rea
 | `thumbnailBase64` | string | No       | Data URL or base64 image to upload to R2 as thumbnail |
 
 \* One of `videoUrl` or `videoBase64` is required.
+
+**Sending base64 video:** In the request body (raw JSON), use the **key** `videoBase64`. The **value** is the video as either:
+- **Data URL:** `"data:video/mp4;base64,<base64-string>"`
+- **Raw base64:** `"<base64-string>"` (long string, no prefix; length &gt; 100)
+
+Example minimal body with base64:
+```json
+{
+  "durationMs": 60000,
+  "title": "My video",
+  "videoBase64": "data:video/mp4;base64,AAAAIGZ0eXBpc29t..."
+}
+```
+Replace the `...` with your full base64 payload. In Postman: Body → raw → JSON, then paste the JSON with `videoBase64` as the key.
 
 **Example – create with existing URL:**
 ```json

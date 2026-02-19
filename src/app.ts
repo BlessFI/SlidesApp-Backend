@@ -9,8 +9,14 @@ import categoriesRoutes from "./routes/categories.routes.js";
 import videoRoutes from "./routes/video.routes.js";
 import voteRoutes from "./routes/vote.routes.js";
 
+const DEFAULT_BODY_LIMIT = 100 * 1024 * 1024; // 100MB for video base64 uploads
+
 export async function buildApp(opts?: { logger?: boolean }) {
-  const fastify = Fastify({ logger: opts?.logger ?? true });
+  const bodyLimit = Number(process.env.BODY_LIMIT_BYTES) || DEFAULT_BODY_LIMIT;
+  const fastify = Fastify({
+    logger: opts?.logger ?? true,
+    bodyLimit,
+  });
   await fastify.register(jwtPlugin);
   await fastify.register(authRoutes, { prefix: "/api/auth" });
   await fastify.register(userRoutes, { prefix: "/api/users" });

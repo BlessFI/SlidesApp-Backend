@@ -23,8 +23,7 @@ export async function getFeedForApp(query: FeedQuery) {
     include: {
       primaryAsset: true,
       assets: {
-        where: { assetType: "thumbnail" },
-        select: { variantLabel: true, cdnUrl: true },
+        select: { assetType: true, variantLabel: true, cdnUrl: true },
       },
       category: { select: { id: true, name: true, slug: true } },
     },
@@ -35,10 +34,14 @@ export async function getFeedForApp(query: FeedQuery) {
   const nextCursor = hasMore ? items[items.length - 1]?.id : null;
 
   const feed = items.map((v) => {
-    const thumbnails = (v.assets ?? []).reduce<Record<string, string>>((acc, a) => {
-      if (a.variantLabel) acc[a.variantLabel] = a.cdnUrl;
-      return acc;
-    }, {});
+    const assets = v.assets ?? [];
+    const thumbnails = assets
+      .filter((a) => a.assetType === "thumbnail" && a.variantLabel)
+      .reduce<Record<string, string>>((acc, a) => {
+        if (a.variantLabel) acc[a.variantLabel] = a.cdnUrl;
+        return acc;
+      }, {});
+    const mp4Asset = assets.find((a) => a.assetType === "master");
     return {
       id: v.id,
       guid: v.guid ?? v.id,
@@ -47,6 +50,7 @@ export async function getFeedForApp(query: FeedQuery) {
       durationMs: v.durationMs,
       aspectRatio: v.aspectRatio != null ? Number(v.aspectRatio) : null,
       url: v.primaryAsset?.cdnUrl ?? null,
+      mp4Url: mp4Asset?.cdnUrl ?? null,
       thumbnailUrl: thumbnails["5"] ?? thumbnails["15"] ?? thumbnails["30"] ?? null,
       thumbnailUrls: thumbnails as { "5"?: string; "15"?: string; "30"?: string },
       category: v.category ? { id: v.category.id, name: v.category.name, slug: v.category.slug } : null,

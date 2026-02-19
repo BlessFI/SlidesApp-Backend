@@ -69,7 +69,7 @@ function runFfmpeg(
 }
 
 /**
- * Process source video: transcode to HLS (9:16, 1920p), extract 3 thumbnails, upload to R2, create assets.
+ * Process source video: (0) upload MP4 to R2 and set video ready, then (1) transcode to HLS (9:16, 1920p), extract 3 thumbnails, upload to R2, set HLS as primary.
  */
 export async function processVideo(input: ProcessVideoInput): Promise<void> {
   const { videoId, appId, sourcePath } = input;
@@ -78,6 +78,27 @@ export async function processVideo(input: ProcessVideoInput): Promise<void> {
   await fs.mkdir(hlsDir, { recursive: true });
 
   try {
+    // 0. Upload source MP4 to R2 so video appears in feed right away (worker does this, not the API)
+    const sourceKey = `videos/${appId}/${videoId}/source.mp4`;
+    const sourceBuffer = await fs.readFile(sourcePath);
+    const sourceResult = await uploadBufferToR2(sourceKey, sourceBuffer, "video/mp4");
+    const mp4Asset = await prisma.videoAsset.create({
+      data: {
+        appId,
+        videoId,
+        assetType: "master",
+        storageProvider: "r2",
+        storageKey: sourceResult.Key,
+        cdnUrl: sourceResult.Location,
+        mimeType: "video/mp4",
+        isPrimary: true,
+      },
+    });
+    await prisma.video.update({
+      where: { id: videoId },
+      data: { status: "ready", primaryAssetId: mp4Asset.id },
+    });
+
     // 1. Transcode to HLS (9:16, 1080x1920)
     const manifestPath = path.join(hlsDir, "master.m3u8");
     const segmentPattern = path.join(hlsDir, "segment_%d.ts").replace(/\\/g, "/");
@@ -127,7 +148,11 @@ export async function processVideo(input: ProcessVideoInput): Promise<void> {
       }
     }
 
-    // 5. Create HLS primary asset and thumbnail assets, update video
+    // 5. Set existing assets (e.g. MP4) to non-primary, create HLS as new primary, update video
+    await prisma.videoAsset.updateMany({
+      where: { videoId },
+      data: { isPrimary: false },
+    });
     const hlsAsset = await prisma.videoAsset.create({
       data: {
         appId,
@@ -164,16 +189,12 @@ export async function processVideo(input: ProcessVideoInput): Promise<void> {
     await prisma.video.update({
       where: { id: videoId },
       data: {
-        status: "ready",
         primaryAssetId: hlsAsset.id,
         aspectRatio: ASPECT_RATIO_9_16,
       },
     });
   } catch (err) {
-    await prisma.video.update({
-      where: { id: videoId },
-      data: { status: "failed" },
-    }).catch(() => {});
+    // Video already has MP4 and status "ready"; don't set "failed" so feed still shows it
     throw err;
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
