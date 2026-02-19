@@ -1,6 +1,7 @@
 /**
  * Video create, get, and update (upload).
  * POST /api/videos — create video (videoUrl or videoBase64). Auth required.
+ * GET /api/videos — list videos the current user posted (same app as token). Auth required.
  * GET /api/videos/:videoId — fetch a single video (same app as token). Auth required.
  * PATCH /api/videos/:videoId — update video metadata and/or upload new primary/thumbnail. Auth required.
  */
@@ -109,6 +110,24 @@ export default async function videoRoutes(fastify: FastifyInstance) {
         }
         throw e;
       }
+    }
+  );
+
+  fastify.get<{ Querystring: { limit?: string; cursor?: string } }>(
+    "/",
+    { preHandler: authGuard },
+    async (
+      request: FastifyRequest<{ Querystring: { limit?: string; cursor?: string } }>,
+      reply: FastifyReply
+    ) => {
+      const req = request as AuthenticatedRequest;
+      const q = request.query;
+      const limit = q.limit ? Math.min(100, parseInt(q.limit, 10) || 50) : 50;
+      const result = await videoService.getMyVideos(req.appId, req.userId, {
+        limit,
+        cursor: q.cursor ?? undefined,
+      });
+      return reply.send(result);
     }
   );
 

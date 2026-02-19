@@ -54,6 +54,7 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
   - `GET /api/categories` — list taxonomy categories for the app. Returns `{ categories: [{ id, name, slug }] }`. Use `id` as `categoryId` in video create/update or feed filter.
 - **Video create/get/update** (require `Authorization: Bearer <token>`)
   - `POST /api/videos` — create video. Body: `durationMs` (required), optional `title`, `description`, `topicId`, `categoryId`, `subjectId`, `aspectRatio`, and either `videoUrl` or `videoBase64`. The source MP4 is uploaded to R2 immediately and the video is set to **`status: "ready"`** so it appears in the feed right away (playable as MP4). In the background, the job transcodes to HLS (9:16, 1920p) and generates thumbnails at 5s, 15s, 30s; when done, the feed URL switches to the HLS manifest (MP4 asset is kept). **Requires FFmpeg** (ffmpeg-static or on PATH) and Cloudflare R2 env vars.
+  - `GET /api/videos` — list videos you posted (same app as token). Query: `?limit=`, `?cursor=`. Returns `{ videos, nextCursor, hasMore }`.
   - `GET /api/videos/:videoId` — fetch a single video (same app as token). Use the `id` from the create response to poll until `status` is `"ready"`.
   - `PATCH /api/videos/:videoId` — update video metadata and/or upload new primary/thumbnail (same app, creator only).
 - **Video interactions** (like, up_vote, super_vote; require `Authorization: Bearer <token>`)

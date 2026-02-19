@@ -147,6 +147,29 @@ export async function getVideo(appId: string, videoId: string) {
   });
 }
 
+export async function getMyVideos(
+  appId: string,
+  creatorId: string,
+  opts?: { limit?: number; cursor?: string }
+) {
+  const limit = Math.min(Math.max(1, opts?.limit ?? 50), 100);
+  const videos = await prisma.video.findMany({
+    where: { appId, creatorId },
+    take: limit + 1,
+    cursor: opts?.cursor ? { id: opts.cursor } : undefined,
+    orderBy: { createdAt: "desc" },
+    include: {
+      assets: true,
+      primaryAsset: true,
+      category: { select: { id: true, name: true, slug: true } },
+    },
+  });
+  const hasMore = videos.length > limit;
+  const items = hasMore ? videos.slice(0, limit) : videos;
+  const nextCursor = hasMore ? items[items.length - 1]?.id : null;
+  return { videos: items, nextCursor, hasMore };
+}
+
 export async function updateVideo(input: UpdateVideoInput) {
   const video = await prisma.video.findFirst({
     where: { id: input.videoId, appId: input.appId },

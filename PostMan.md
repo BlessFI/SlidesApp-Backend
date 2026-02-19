@@ -341,6 +341,37 @@ Require **Authorization: Bearer {{token}}**. Creates/updates videos in the same 
 
 **Token tip:** Use the **string** value from the login/register response (e.g. `response.token` or `data.token`), not the whole JSON. Header must be exactly: `Authorization: Bearer <that-string>`.
 
+### GET /api/videos (list my videos)
+
+Returns only videos **you** posted in the current app (creator = user from token).
+
+| Field   | Value |
+|--------|--------|
+| **Method** | `GET` |
+| **URL**    | `{{baseUrl}}/api/videos?limit=20&cursor={{videoId}}` |
+| **Headers** | `Authorization: Bearer {{token}}` |
+
+**Query params:** `limit` (default 50, max 100), `cursor` (video id for next page).
+
+**Response (200):**
+```json
+{
+  "videos": [
+    {
+      "id": "video-uuid",
+      "status": "ready",
+      "title": "...",
+      "assets": [...],
+      "primaryAsset": { "cdnUrl": "https://..." },
+      "category": { "id": "...", "name": "...", "slug": "..." },
+      "createdAt": "..."
+    }
+  ],
+  "nextCursor": "video-uuid-for-next-page",
+  "hasMore": true
+}
+```
+
 ### GET /api/videos/:videoId (fetch one video)
 
 Use this to **fetch a video you uploaded** (e.g. to poll until `status` is `"ready"`). Same app as your token.
