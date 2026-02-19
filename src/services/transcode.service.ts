@@ -27,18 +27,22 @@ export interface ProcessVideoInput {
   sourcePath: string;
 }
 
+const VERTICAL_FILTER = `scale=${HLS_WIDTH}:${HLS_HEIGHT}:force_original_aspect_ratio=decrease,pad=${HLS_WIDTH}:${HLS_HEIGHT}:(ow-iw)/2:(oh-ih)/2`;
+
 function runFfmpeg(
   inputPath: string,
   outputPath: string,
-  options: { hls?: { segmentPattern: string }; thumbnail?: { seekSec: number } }
+  options: {
+    hls?: { segmentPattern: string };
+    thumbnail?: { seekSec: number };
+    verticalMp4?: true;
+  }
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let cmd = ffmpeg(inputPath);
     if (options.hls) {
       cmd = cmd
-        .videoFilters(
-          `scale=${HLS_WIDTH}:${HLS_HEIGHT}:force_original_aspect_ratio=decrease,pad=${HLS_WIDTH}:${HLS_HEIGHT}:(ow-iw)/2:(oh-ih)/2`
-        )
+        .videoFilters(VERTICAL_FILTER)
         .videoCodec("libx264")
         .outputOptions([
           "-preset fast",
@@ -60,6 +64,20 @@ function runFfmpeg(
         .frames(1)
         .outputOptions(["-vf", `scale=${HLS_WIDTH}:${HLS_HEIGHT}:force_original_aspect_ratio=decrease`])
         .output(outputPath);
+    } else if (options.verticalMp4) {
+      cmd = cmd
+        .videoFilters(VERTICAL_FILTER)
+        .videoCodec("libx264")
+        .outputOptions([
+          "-preset fast",
+          "-crf 23",
+          "-maxrate 5M",
+          "-bufsize 10M",
+          "-pix_fmt yuv420p",
+          "-c:a aac",
+          "-b:a 128k",
+        ])
+        .output(outputPath);
     }
     cmd
       .on("end", () => resolve())
@@ -78,9 +96,11 @@ export async function processVideo(input: ProcessVideoInput): Promise<void> {
   await fs.mkdir(hlsDir, { recursive: true });
 
   try {
-    // 0. Upload source MP4 to R2 so video appears in feed right away (worker does this, not the API)
+    // 0. Encode to vertical (9:16) MP4 and upload to R2 so video appears in feed right away
+    const verticalMp4Path = path.join(tmpDir, "vertical.mp4");
+    await runFfmpeg(sourcePath, verticalMp4Path, { verticalMp4: true });
     const sourceKey = `videos/${appId}/${videoId}/source.mp4`;
-    const sourceBuffer = await fs.readFile(sourcePath);
+    const sourceBuffer = await fs.readFile(verticalMp4Path);
     const sourceResult = await uploadBufferToR2(sourceKey, sourceBuffer, "video/mp4");
     const mp4Asset = await prisma.videoAsset.create({
       data: {
@@ -96,7 +116,7 @@ export async function processVideo(input: ProcessVideoInput): Promise<void> {
     });
     await prisma.video.update({
       where: { id: videoId },
-      data: { status: "ready", primaryAssetId: mp4Asset.id },
+      data: { status: "ready", primaryAssetId: mp4Asset.id, aspectRatio: ASPECT_RATIO_9_16 },
     });
 
     // 1. Transcode to HLS (9:16, 1080x1920)

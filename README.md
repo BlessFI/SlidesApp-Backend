@@ -49,7 +49,7 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
   - `GET /api/users` — list users in this app
   - `GET /api/users/:id` — user profile in this app (404 if user has no profile in this app)
 - **Feed** (app-scoped video feed; app via `app_id` query, `X-App-Id` header, or JWT)
-  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=`, `?limit=`, `?cursor=`. Returns `{ items, nextCursor, hasMore }` with each item: `id`, `guid`, `title`, `url` (HLS manifest CDN URL), `thumbnailUrl`, `thumbnailUrls` (5s, 15s, 30s), `durationMs`, `category`, vote counts, etc.
+  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=` (single or multiple IDs: comma-separated or repeated), `?topic_id=`, `?subject_id=`, `?limit=`, `?cursor=`. Returns `{ items, nextCursor, hasMore }` with each item: `id`, `guid`, `title`, `url`, `mp4Url`, `thumbnailUrl`, `thumbnailUrls`, `durationMs`, `category`, `topic`, `subject`, vote counts, etc.
 - **Categories** (app-scoped; app via `app_id`, `X-App-Id`, or JWT)
   - `GET /api/categories` — list taxonomy categories for the app. Returns `{ categories: [{ id, name, slug }] }`. Use `id` as `categoryId` in video create/update or feed filter.
 - **Video create/get/update** (require `Authorization: Bearer <token>`)

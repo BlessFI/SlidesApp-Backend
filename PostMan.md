@@ -205,7 +205,7 @@ Fetch feed content (ready videos) for an app. App via **query `app_id`**, **head
 | **URL**    | `{{baseUrl}}/api/feed?app_id={{appId}}&limit=20` |
 | **Headers** | Optional `X-App-Id: {{appId}}` or `Authorization: Bearer {{token}}` |
 
-**Query params:** `app_id` (required if no header/JWT), `category_id` (optional), `limit` (default 50, max 100), `cursor` (for next page).
+**Query params:** `app_id` (required if no header/JWT), `category_id` (optional, one or more UUIDs: comma-separated or repeated), `topic_id` (optional, one or more), `subject_id` (optional, one or more), `limit` (default 50, max 100), `cursor` (for next page).
 
 **Response (200):**
 ```json
@@ -222,6 +222,8 @@ Fetch feed content (ready videos) for an app. App via **query `app_id`**, **head
       "mp4Url": "https://pub-xxx.r2.dev/.../source.mp4",
       "thumbnailUrl": null,
       "category": { "id": "...", "name": "News", "slug": "news" },
+      "topic": { "id": "...", "name": "Current events", "slug": "current-events" },
+      "subject": { "id": "...", "name": "Environment", "slug": "environment" },
       "likeCount": 0,
       "upVoteCount": 0,
       "superVoteCount": 0,

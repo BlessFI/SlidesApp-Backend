@@ -2,7 +2,9 @@ import { prisma } from "../lib/prisma.js";
 
 export interface FeedQuery {
   appId: string;
-  categoryId?: string;
+  categoryIds?: string[];
+  topicIds?: string[];
+  subjectIds?: string[];
   limit?: number;
   cursor?: string;
 }
@@ -12,7 +14,9 @@ export async function getFeedForApp(query: FeedQuery) {
   const where = {
     appId: query.appId,
     status: "ready" as const,
-    ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+    ...(query.categoryIds?.length ? { categoryId: query.categoryIds.length === 1 ? query.categoryIds[0] : { in: query.categoryIds } } : {}),
+    ...(query.topicIds?.length ? { topicId: query.topicIds.length === 1 ? query.topicIds[0] : { in: query.topicIds } } : {}),
+    ...(query.subjectIds?.length ? { subjectId: query.subjectIds.length === 1 ? query.subjectIds[0] : { in: query.subjectIds } } : {}),
   };
 
   const videos = await prisma.video.findMany({
@@ -26,6 +30,8 @@ export async function getFeedForApp(query: FeedQuery) {
         select: { assetType: true, variantLabel: true, cdnUrl: true },
       },
       category: { select: { id: true, name: true, slug: true } },
+      topic: { select: { id: true, name: true, slug: true } },
+      subject: { select: { id: true, name: true, slug: true } },
     },
   });
 
@@ -54,6 +60,8 @@ export async function getFeedForApp(query: FeedQuery) {
       thumbnailUrl: thumbnails["5"] ?? thumbnails["15"] ?? thumbnails["30"] ?? null,
       thumbnailUrls: thumbnails as { "5"?: string; "15"?: string; "30"?: string },
       category: v.category ? { id: v.category.id, name: v.category.name, slug: v.category.slug } : null,
+      topic: v.topic ? { id: v.topic.id, name: v.topic.name, slug: v.topic.slug } : null,
+      subject: v.subject ? { id: v.subject.id, name: v.subject.name, slug: v.subject.slug } : null,
       likeCount: v.likeCount,
       upVoteCount: v.upVoteCount,
       superVoteCount: v.superVoteCount,
