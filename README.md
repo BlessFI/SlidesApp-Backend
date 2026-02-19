@@ -28,6 +28,12 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
    ```
    Or use migrations: `npx prisma migrate dev`
 
+   **If you get P3005 (database schema is not empty)** when running `npx prisma migrate deploy`, the DB was created without Migrate. One-time baseline, then deploy:
+   ```bash
+   npx prisma migrate resolve --applied 0_baseline   # once only; skip if you get P3008 (already applied)
+   npx prisma migrate deploy
+   ```
+
 4. **Run**
    - Development (with Nodemon): `npm run dev`
    - Production: `npm run build && npm start`
@@ -49,11 +55,11 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
   - `GET /api/users` — list users in this app
   - `GET /api/users/:id` — user profile in this app (404 if user has no profile in this app)
 - **Feed** (app-scoped video feed; app via `app_id` query, `X-App-Id` header, or JWT)
-  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=` (single or multiple IDs: comma-separated or repeated), `?topic_id=`, `?subject_id=`, `?limit=`, `?cursor=`. Returns `{ items, nextCursor, hasMore }` with each item: `id`, `guid`, `title`, `url`, `mp4Url`, `thumbnailUrl`, `thumbnailUrls`, `durationMs`, `category`, `topic`, `subject`, vote counts, etc.
+  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=` (single or multiple IDs: comma-separated or repeated), `?topic_id=`, `?subject_id=`, `?limit=`, `?cursor=`. Returns `{ items, nextCursor, hasMore }` with each item: `id`, `guid`, `title`, `url`, `mp4Url`, `thumbnailUrl`, `thumbnailUrls`, `durationMs`, `categories`, `topics`, `subjects` (arrays), vote counts, etc.
 - **Categories** (app-scoped; app via `app_id`, `X-App-Id`, or JWT)
   - `GET /api/categories` — list taxonomy categories for the app. Returns `{ categories: [{ id, name, slug }] }`. Use `id` as `categoryId` in video create/update or feed filter.
 - **Video create/get/update** (require `Authorization: Bearer <token>`)
-  - `POST /api/videos` — create video. Body: `durationMs` (required), optional `title`, `description`, `topicId`, `categoryId`, `subjectId`, `aspectRatio`, and either `videoUrl` or `videoBase64`. The source MP4 is uploaded to R2 immediately and the video is set to **`status: "ready"`** so it appears in the feed right away (playable as MP4). In the background, the job transcodes to HLS (9:16, 1920p) and generates thumbnails at 5s, 15s, 30s; when done, the feed URL switches to the HLS manifest (MP4 asset is kept). **Requires FFmpeg** (ffmpeg-static or on PATH) and Cloudflare R2 env vars.
+  - `POST /api/videos` — create video. Body: `durationMs` (required), optional `title`, `description`, `categoryIds`, `topicIds`, `subjectIds` (arrays of UUIDs), `aspectRatio`, and either `videoUrl` or `videoBase64`. The source MP4 is uploaded to R2 immediately and the video is set to **`status: "ready"`** so it appears in the feed right away (playable as MP4). In the background, the job transcodes to HLS (9:16, 1920p) and generates thumbnails at 5s, 15s, 30s; when done, the feed URL switches to the HLS manifest (MP4 asset is kept). **Requires FFmpeg** (ffmpeg-static or on PATH) and Cloudflare R2 env vars.
   - `GET /api/videos` — list videos you posted (same app as token). Query: `?limit=`, `?cursor=`. Returns `{ videos, nextCursor, hasMore }`.
   - `GET /api/videos/:videoId` — fetch a single video (same app as token). Use the `id` from the create response to poll until `status` is `"ready"`.
   - `PATCH /api/videos/:videoId` — update video metadata and/or upload new primary/thumbnail (same app, creator only).

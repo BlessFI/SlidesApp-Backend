@@ -65,9 +65,6 @@ model TaxonomyNode {
   app              App            @relation(fields: [appId], references: [id], onDelete: Cascade)
   parent           TaxonomyNode?  @relation("TaxonomyHierarchy", fields: [parentId], references: [id])
   children         TaxonomyNode[] @relation("TaxonomyHierarchy")
-  videosAsCategory Video[]        @relation("VideoCategory")
-  videosAsSubject  Video[]        @relation("VideoSubject")
-  videosAsTopic    Video[]        @relation("VideoTopic")
 
   @@unique([appId, kind, slug])
   @@map("taxonomy_nodes")
@@ -80,9 +77,9 @@ model Video {
   status         String        @default("ready")
   title          String?
   description    String?
-  topicId        String?       @map("topic_id") @db.Uuid
-  categoryId     String?       @map("category_id") @db.Uuid
-  subjectId      String?       @map("subject_id") @db.Uuid
+  categoryIds    String[]      @default([]) @map("category_ids")
+  topicIds       String[]      @default([]) @map("topic_ids")
+  subjectIds     String[]      @default([]) @map("subject_ids")
   durationMs     Int           @map("duration_ms")
   aspectRatio    Decimal?      @map("aspect_ratio") @db.Decimal(4, 2)
   primaryAssetId String?       @map("primary_asset_id") @db.Uuid
@@ -104,11 +101,8 @@ model Video {
   reports        Report[]
   assets         VideoAsset[]
   app            App           @relation(fields: [appId], references: [id], onDelete: Cascade)
-  category       TaxonomyNode? @relation("VideoCategory", fields: [categoryId], references: [id])
   creator        User          @relation("VideoCreator", fields: [creatorId], references: [id], onDelete: Cascade)
   primaryAsset   VideoAsset?   @relation("VideoPrimaryAsset", fields: [primaryAssetId], references: [id])
-  subject        TaxonomyNode? @relation("VideoSubject", fields: [subjectId], references: [id])
-  topic          TaxonomyNode? @relation("VideoTopic", fields: [topicId], references: [id])
   votes          Vote[]
 
   @@index([appId, status])

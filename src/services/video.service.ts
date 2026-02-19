@@ -16,9 +16,12 @@ export interface CreateVideoInput {
   creatorId: string;
   title?: string | null;
   description?: string | null;
-  topicId?: string | null;
-  categoryId?: string | null;
-  subjectId?: string | null;
+  /** List of category UUIDs. */
+  categoryIds?: string[];
+  /** List of topic UUIDs. */
+  topicIds?: string[];
+  /** List of subject UUIDs. */
+  subjectIds?: string[];
   durationMs: number;
   aspectRatio?: number | null;
   /** Existing video URL; used when not uploading base64. */
@@ -35,9 +38,12 @@ export interface UpdateVideoInput {
   videoId: string;
   title?: string | null;
   description?: string | null;
-  topicId?: string | null;
-  categoryId?: string | null;
-  subjectId?: string | null;
+  /** List of category UUIDs. */
+  categoryIds?: string[];
+  /** List of topic UUIDs. */
+  topicIds?: string[];
+  /** List of subject UUIDs. */
+  subjectIds?: string[];
   durationMs?: number;
   aspectRatio?: number | null;
   /** New primary video: base64 or data URL to upload to R2. */
@@ -109,9 +115,9 @@ export async function createVideo(input: CreateVideoInput) {
       status: "processing",
       title: input.title ?? null,
       description: input.description ?? null,
-      topicId: input.topicId ?? null,
-      categoryId: input.categoryId ?? null,
-      subjectId: input.subjectId ?? null,
+      categoryIds: input.categoryIds ?? [],
+      topicIds: input.topicIds ?? [],
+      subjectIds: input.subjectIds ?? [],
       durationMs: input.durationMs,
       aspectRatio: null,
       primaryAssetId: null,
@@ -130,21 +136,42 @@ export async function createVideo(input: CreateVideoInput) {
       });
   }
 
-  return prisma.video.findUniqueOrThrow({
+  const created = await prisma.video.findUniqueOrThrow({
     where: { id: video.id },
     include: { assets: true, primaryAsset: true },
   });
+  const [categories, topics, subjects] = await Promise.all([
+    created.categoryIds.length
+      ? prisma.taxonomyNode.findMany({ where: { id: { in: created.categoryIds } }, select: { id: true, name: true, slug: true } })
+      : [],
+    created.topicIds.length
+      ? prisma.taxonomyNode.findMany({ where: { id: { in: created.topicIds } }, select: { id: true, name: true, slug: true } })
+      : [],
+    created.subjectIds.length
+      ? prisma.taxonomyNode.findMany({ where: { id: { in: created.subjectIds } }, select: { id: true, name: true, slug: true } })
+      : [],
+  ]);
+  return { ...created, categories, topics, subjects };
 }
 
 export async function getVideo(appId: string, videoId: string) {
-  return prisma.video.findFirst({
+  const video = await prisma.video.findFirst({
     where: { id: videoId, appId },
-    include: {
-      assets: true,
-      primaryAsset: true,
-      category: { select: { id: true, name: true, slug: true } },
-    },
+    include: { assets: true, primaryAsset: true },
   });
+  if (!video) return null;
+  const [categories, topics, subjects] = await Promise.all([
+    video.categoryIds.length
+      ? prisma.taxonomyNode.findMany({ where: { id: { in: video.categoryIds } }, select: { id: true, name: true, slug: true } })
+      : [],
+    video.topicIds.length
+      ? prisma.taxonomyNode.findMany({ where: { id: { in: video.topicIds } }, select: { id: true, name: true, slug: true } })
+      : [],
+    video.subjectIds.length
+      ? prisma.taxonomyNode.findMany({ where: { id: { in: video.subjectIds } }, select: { id: true, name: true, slug: true } })
+      : [],
+  ]);
+  return { ...video, categories, topics, subjects };
 }
 
 export async function getMyVideos(
@@ -158,16 +185,29 @@ export async function getMyVideos(
     take: limit + 1,
     cursor: opts?.cursor ? { id: opts.cursor } : undefined,
     orderBy: { createdAt: "desc" },
-    include: {
-      assets: true,
-      primaryAsset: true,
-      category: { select: { id: true, name: true, slug: true } },
-    },
+    include: { assets: true, primaryAsset: true },
   });
   const hasMore = videos.length > limit;
   const items = hasMore ? videos.slice(0, limit) : videos;
   const nextCursor = hasMore ? items[items.length - 1]?.id : null;
-  return { videos: items, nextCursor, hasMore };
+  const allCategoryIds = [...new Set(items.flatMap((v) => v.categoryIds))];
+  const allTopicIds = [...new Set(items.flatMap((v) => v.topicIds))];
+  const allSubjectIds = [...new Set(items.flatMap((v) => v.subjectIds))];
+  const [categoryNodes, topicNodes, subjectNodes] = await Promise.all([
+    allCategoryIds.length ? prisma.taxonomyNode.findMany({ where: { id: { in: allCategoryIds } }, select: { id: true, name: true, slug: true } }) : [],
+    allTopicIds.length ? prisma.taxonomyNode.findMany({ where: { id: { in: allTopicIds } }, select: { id: true, name: true, slug: true } }) : [],
+    allSubjectIds.length ? prisma.taxonomyNode.findMany({ where: { id: { in: allSubjectIds } }, select: { id: true, name: true, slug: true } }) : [],
+  ]);
+  const categoryMap = new Map(categoryNodes.map((n) => [n.id, n]));
+  const topicMap = new Map(topicNodes.map((n) => [n.id, n]));
+  const subjectMap = new Map(subjectNodes.map((n) => [n.id, n]));
+  const videosWithTaxonomy = items.map((v) => ({
+    ...v,
+    categories: v.categoryIds.map((id) => categoryMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
+    topics: v.topicIds.map((id) => topicMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
+    subjects: v.subjectIds.map((id) => subjectMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
+  }));
+  return { videos: videosWithTaxonomy, nextCursor, hasMore };
 }
 
 export async function updateVideo(input: UpdateVideoInput) {
@@ -228,9 +268,9 @@ export async function updateVideo(input: UpdateVideoInput) {
   const updateData: Parameters<typeof prisma.video.update>[0]["data"] = {
     title: input.title !== undefined ? input.title : undefined,
     description: input.description !== undefined ? input.description : undefined,
-    topicId: input.topicId !== undefined ? input.topicId : undefined,
-    categoryId: input.categoryId !== undefined ? input.categoryId : undefined,
-    subjectId: input.subjectId !== undefined ? input.subjectId : undefined,
+    categoryIds: input.categoryIds !== undefined ? input.categoryIds : undefined,
+    topicIds: input.topicIds !== undefined ? input.topicIds : undefined,
+    subjectIds: input.subjectIds !== undefined ? input.subjectIds : undefined,
     durationMs: input.durationMs,
     aspectRatio: input.aspectRatio !== undefined ? input.aspectRatio : undefined,
   };
@@ -244,8 +284,20 @@ export async function updateVideo(input: UpdateVideoInput) {
     data: filtered,
   });
 
-  return prisma.video.findUniqueOrThrow({
+  const updated = await prisma.video.findUniqueOrThrow({
     where: { id: video.id },
     include: { assets: true, primaryAsset: true },
   });
+  const [categories, topics, subjects] = await Promise.all([
+    updated.categoryIds.length
+      ? prisma.taxonomyNode.findMany({ where: { id: { in: updated.categoryIds } }, select: { id: true, name: true, slug: true } })
+      : [],
+    updated.topicIds.length
+      ? prisma.taxonomyNode.findMany({ where: { id: { in: updated.topicIds } }, select: { id: true, name: true, slug: true } })
+      : [],
+    updated.subjectIds.length
+      ? prisma.taxonomyNode.findMany({ where: { id: { in: updated.subjectIds } }, select: { id: true, name: true, slug: true } })
+      : [],
+  ]);
+  return { ...updated, categories, topics, subjects };
 }

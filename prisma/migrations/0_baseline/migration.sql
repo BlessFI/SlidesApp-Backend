@@ -1,0 +1,3 @@
+-- Baseline: existing database state (no-op).
+-- This migration is only marked as applied via: npx prisma migrate resolve --applied 0_baseline
+-- Do not run this file; it exists so Prisma has a starting point for deploy.

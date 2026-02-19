@@ -399,15 +399,15 @@ Use this to **fetch a video you uploaded** (e.g. to poll until `status` is `"rea
 
 **Request body:**
 
-| Field             | Type   | Required | Description |
-|-------------------|--------|----------|-------------|
-| `durationMs`      | number | Yes      | Video duration in milliseconds |
-| `title`           | string | No       | Video title |
-| `description`     | string | No       | Video description |
-| `topicId`         | string | No       | UUID of a TaxonomyNode with kind `topic` |
-| `categoryId`      | string | No       | UUID of a TaxonomyNode with kind `category` |
-| `subjectId`       | string | No       | UUID of a TaxonomyNode with kind `subject` |
-| `aspectRatio`     | number | No       | e.g. 1.78 for 16:9 |
+| Field             | Type     | Required | Description |
+|-------------------|----------|----------|-------------|
+| `durationMs`      | number   | Yes      | Video duration in milliseconds |
+| `title`           | string   | No       | Video title |
+| `description`     | string   | No       | Video description |
+| `categoryIds`      | string[] | No       | List of UUIDs of TaxonomyNodes with kind `category` |
+| `topicIds`         | string[] | No       | List of UUIDs of TaxonomyNodes with kind `topic` |
+| `subjectIds`       | string[] | No       | List of UUIDs of TaxonomyNodes with kind `subject` |
+| `aspectRatio`     | number   | No       | e.g. 1.78 for 16:9 |
 | `videoUrl`        | string | No*      | Existing video URL (use this **or** `videoBase64`) |
 | `videoBase64`     | string | No*      | Data URL or base64 video to upload to R2 (use this **or** `videoUrl`) |
 | `thumbnailBase64` | string | No       | Data URL or base64 image to upload to R2 as thumbnail |
@@ -434,7 +434,9 @@ Replace the `...` with your full base64 payload. In Postman: Body → raw → JS
   "durationMs": 60000,
   "title": "My first reel",
   "description": "Short clip",
-  "categoryId": "uuid-of-your-category",
+  "categoryIds": ["uuid-of-your-category"],
+  "topicIds": ["uuid-topic-1", "uuid-topic-2"],
+  "subjectIds": ["uuid-subject-1"],
   "videoUrl": "https://example.com/video.mp4"
 }
 ```
@@ -444,7 +446,9 @@ Replace the `...` with your full base64 payload. In Postman: Body → raw → JS
 {
   "durationMs": 45000,
   "title": "Uploaded reel",
-  "categoryId": "uuid-of-your-category",
+  "categoryIds": ["uuid-of-your-category"],
+  "topicIds": [],
+  "subjectIds": [],
   "videoBase64": "data:video/mp4;base64,AAAAIGZ0eXBpc29t...",
   "thumbnailBase64": "data:image/png;base64,iVBORw0KGgo..."
 }
@@ -481,7 +485,7 @@ Replace the `...` with your full base64 payload. In Postman: Body → raw → JS
   "durationMs": 60000,
   "title": "Test processing",
   "description": "Pipeline test",
-  "categoryId": "YOUR_CATEGORY_UUID_HERE",
+  "categoryIds": ["YOUR_CATEGORY_UUID_HERE"],
   "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
 }
 ```
@@ -520,24 +524,26 @@ After a while, call **GET /api/feed?app_id={{appId}}** and look for this video (
 
 **Request body:** All fields optional. Only the video’s creator (same app) can update.
 
-| Field             | Type   | Description |
-|-------------------|--------|-------------|
-| `title`           | string | Video title |
-| `description`     | string | Video description |
-| `topicId`         | string | TaxonomyNode UUID (topic) |
-| `categoryId`      | string | TaxonomyNode UUID (category) |
-| `subjectId`       | string | TaxonomyNode UUID (subject) |
-| `durationMs`       | number | Duration in ms |
-| `aspectRatio`     | number | e.g. 1.78 |
-| `videoBase64`     | string | New primary video (uploaded to R2) |
-| `thumbnailBase64` | string | New thumbnail (uploaded to R2) |
+| Field             | Type     | Description |
+|-------------------|----------|-------------|
+| `title`           | string   | Video title |
+| `description`     | string   | Video description |
+| `categoryIds`     | string[] | List of TaxonomyNode UUIDs (categories) |
+| `topicIds`        | string[] | List of TaxonomyNode UUIDs (topics) |
+| `subjectIds`      | string[] | List of TaxonomyNode UUIDs (subjects) |
+| `durationMs`      | number   | Duration in ms |
+| `aspectRatio`     | number   | e.g. 1.78 |
+| `videoBase64`     | string   | New primary video (uploaded to R2) |
+| `thumbnailBase64` | string   | New thumbnail (uploaded to R2) |
 
 **Example:**
 ```json
 {
   "title": "Updated title",
   "description": "New description",
-  "categoryId": "uuid-of-category"
+  "categoryIds": ["uuid-of-category"],
+  "topicIds": ["uuid-topic-1"],
+  "subjectIds": ["uuid-subject-1"]
 }
 ```
 

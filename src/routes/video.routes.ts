@@ -19,9 +19,9 @@ const createVideoSchema = {
     properties: {
       title: { type: "string" },
       description: { type: "string" },
-      topicId: { type: "string", format: "uuid" },
-      categoryId: { type: "string", format: "uuid" },
-      subjectId: { type: "string", format: "uuid" },
+      categoryIds: { type: "array", items: { type: "string", format: "uuid" } },
+      topicIds: { type: "array", items: { type: "string", format: "uuid" } },
+      subjectIds: { type: "array", items: { type: "string", format: "uuid" } },
       durationMs: { type: "number" },
       aspectRatio: { type: "number" },
       videoUrl: { type: "string" },
@@ -37,9 +37,9 @@ const updateVideoSchema = {
     properties: {
       title: { type: "string" },
       description: { type: "string" },
-      topicId: { type: "string", format: "uuid" },
-      categoryId: { type: "string", format: "uuid" },
-      subjectId: { type: "string", format: "uuid" },
+      categoryIds: { type: "array", items: { type: "string", format: "uuid" } },
+      topicIds: { type: "array", items: { type: "string", format: "uuid" } },
+      subjectIds: { type: "array", items: { type: "string", format: "uuid" } },
       durationMs: { type: "number" },
       aspectRatio: { type: "number" },
       videoBase64: { type: "string" },
@@ -53,9 +53,9 @@ export default async function videoRoutes(fastify: FastifyInstance) {
     Body: {
       title?: string;
       description?: string;
-      topicId?: string;
-      categoryId?: string;
-      subjectId?: string;
+      categoryIds?: string[];
+      topicIds?: string[];
+      subjectIds?: string[];
       durationMs: number;
       aspectRatio?: number;
       videoUrl?: string;
@@ -70,9 +70,9 @@ export default async function videoRoutes(fastify: FastifyInstance) {
         Body: {
           title?: string;
           description?: string;
-          topicId?: string;
-          categoryId?: string;
-          subjectId?: string;
+          categoryIds?: string[];
+          topicIds?: string[];
+          subjectIds?: string[];
           durationMs: number;
           aspectRatio?: number;
           videoUrl?: string;
@@ -90,9 +90,9 @@ export default async function videoRoutes(fastify: FastifyInstance) {
           creatorId: req.userId,
           title: body.title ?? null,
           description: body.description ?? null,
-          topicId: body.topicId ?? null,
-          categoryId: body.categoryId ?? null,
-          subjectId: body.subjectId ?? null,
+          categoryIds: body.categoryIds ?? [],
+          topicIds: body.topicIds ?? [],
+          subjectIds: body.subjectIds ?? [],
           durationMs: body.durationMs,
           aspectRatio: body.aspectRatio ?? null,
           videoUrl: body.videoUrl ?? null,
@@ -153,9 +153,9 @@ export default async function videoRoutes(fastify: FastifyInstance) {
     Body: {
       title?: string;
       description?: string;
-      topicId?: string;
-      categoryId?: string;
-      subjectId?: string;
+      categoryIds?: string[];
+      topicIds?: string[];
+      subjectIds?: string[];
       durationMs?: number;
       aspectRatio?: number;
       videoBase64?: string;
@@ -170,9 +170,9 @@ export default async function videoRoutes(fastify: FastifyInstance) {
         Body: {
           title?: string;
           description?: string;
-          topicId?: string;
-          categoryId?: string;
-          subjectId?: string;
+          categoryIds?: string[];
+          topicIds?: string[];
+          subjectIds?: string[];
           durationMs?: number;
           aspectRatio?: number;
           videoBase64?: string;
@@ -191,9 +191,9 @@ export default async function videoRoutes(fastify: FastifyInstance) {
           videoId,
           title: body.title,
           description: body.description,
-          topicId: body.topicId,
-          categoryId: body.categoryId,
-          subjectId: body.subjectId,
+          categoryIds: body.categoryIds,
+          topicIds: body.topicIds,
+          subjectIds: body.subjectIds,
           durationMs: body.durationMs,
           aspectRatio: body.aspectRatio,
           videoBase64: body.videoBase64,

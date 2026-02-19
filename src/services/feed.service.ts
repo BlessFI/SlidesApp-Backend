@@ -14,9 +14,9 @@ export async function getFeedForApp(query: FeedQuery) {
   const where = {
     appId: query.appId,
     status: "ready" as const,
-    ...(query.categoryIds?.length ? { categoryId: query.categoryIds.length === 1 ? query.categoryIds[0] : { in: query.categoryIds } } : {}),
-    ...(query.topicIds?.length ? { topicId: query.topicIds.length === 1 ? query.topicIds[0] : { in: query.topicIds } } : {}),
-    ...(query.subjectIds?.length ? { subjectId: query.subjectIds.length === 1 ? query.subjectIds[0] : { in: query.subjectIds } } : {}),
+    ...(query.categoryIds?.length ? { categoryIds: { hasSome: query.categoryIds } } : {}),
+    ...(query.topicIds?.length ? { topicIds: { hasSome: query.topicIds } } : {}),
+    ...(query.subjectIds?.length ? { subjectIds: { hasSome: query.subjectIds } } : {}),
   };
 
   const videos = await prisma.video.findMany({
@@ -29,15 +29,24 @@ export async function getFeedForApp(query: FeedQuery) {
       assets: {
         select: { assetType: true, variantLabel: true, cdnUrl: true },
       },
-      category: { select: { id: true, name: true, slug: true } },
-      topic: { select: { id: true, name: true, slug: true } },
-      subject: { select: { id: true, name: true, slug: true } },
     },
   });
 
   const hasMore = videos.length > limit;
   const items = hasMore ? videos.slice(0, limit) : videos;
   const nextCursor = hasMore ? items[items.length - 1]?.id : null;
+
+  const allCategoryIds = [...new Set(items.flatMap((v) => v.categoryIds))];
+  const allTopicIds = [...new Set(items.flatMap((v) => v.topicIds))];
+  const allSubjectIds = [...new Set(items.flatMap((v) => v.subjectIds))];
+  const [categoryNodes, topicNodes, subjectNodes] = await Promise.all([
+    allCategoryIds.length ? prisma.taxonomyNode.findMany({ where: { id: { in: allCategoryIds } }, select: { id: true, name: true, slug: true } }) : [],
+    allTopicIds.length ? prisma.taxonomyNode.findMany({ where: { id: { in: allTopicIds } }, select: { id: true, name: true, slug: true } }) : [],
+    allSubjectIds.length ? prisma.taxonomyNode.findMany({ where: { id: { in: allSubjectIds } }, select: { id: true, name: true, slug: true } }) : [],
+  ]);
+  const categoryMap = new Map(categoryNodes.map((n) => [n.id, n]));
+  const topicMap = new Map(topicNodes.map((n) => [n.id, n]));
+  const subjectMap = new Map(subjectNodes.map((n) => [n.id, n]));
 
   const feed = items.map((v) => {
     const assets = v.assets ?? [];
@@ -48,6 +57,9 @@ export async function getFeedForApp(query: FeedQuery) {
         return acc;
       }, {});
     const mp4Asset = assets.find((a) => a.assetType === "master");
+    const categories = v.categoryIds.map((id) => categoryMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[];
+    const topics = v.topicIds.map((id) => topicMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[];
+    const subjects = v.subjectIds.map((id) => subjectMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[];
     return {
       id: v.id,
       guid: v.guid ?? v.id,
@@ -59,9 +71,9 @@ export async function getFeedForApp(query: FeedQuery) {
       mp4Url: mp4Asset?.cdnUrl ?? null,
       thumbnailUrl: thumbnails["5"] ?? thumbnails["15"] ?? thumbnails["30"] ?? null,
       thumbnailUrls: thumbnails as { "5"?: string; "15"?: string; "30"?: string },
-      category: v.category ? { id: v.category.id, name: v.category.name, slug: v.category.slug } : null,
-      topic: v.topic ? { id: v.topic.id, name: v.topic.name, slug: v.topic.slug } : null,
-      subject: v.subject ? { id: v.subject.id, name: v.subject.name, slug: v.subject.slug } : null,
+      categories,
+      topics,
+      subjects,
       likeCount: v.likeCount,
       upVoteCount: v.upVoteCount,
       superVoteCount: v.superVoteCount,
