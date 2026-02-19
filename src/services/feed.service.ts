@@ -22,6 +22,10 @@ export async function getFeedForApp(query: FeedQuery) {
     orderBy: [{ rankingScore: "desc" }, { createdAt: "desc" }],
     include: {
       primaryAsset: true,
+      assets: {
+        where: { assetType: "thumbnail" },
+        select: { variantLabel: true, cdnUrl: true },
+      },
       category: { select: { id: true, name: true, slug: true } },
     },
   });
@@ -30,21 +34,28 @@ export async function getFeedForApp(query: FeedQuery) {
   const items = hasMore ? videos.slice(0, limit) : videos;
   const nextCursor = hasMore ? items[items.length - 1]?.id : null;
 
-  const feed = items.map((v) => ({
-    id: v.id,
-    guid: v.guid ?? v.id,
-    title: v.title,
-    description: v.description,
-    durationMs: v.durationMs,
-    aspectRatio: v.aspectRatio != null ? Number(v.aspectRatio) : null,
-    url: v.primaryAsset?.cdnUrl ?? null,
-    thumbnailUrl: null as string | null, // could be resolved from assets with assetType=thumbnail
-    category: v.category ? { id: v.category.id, name: v.category.name, slug: v.category.slug } : null,
-    likeCount: v.likeCount,
-    upVoteCount: v.upVoteCount,
-    superVoteCount: v.superVoteCount,
-    createdAt: v.createdAt.toISOString(),
-  }));
+  const feed = items.map((v) => {
+    const thumbnails = (v.assets ?? []).reduce<Record<string, string>>((acc, a) => {
+      if (a.variantLabel) acc[a.variantLabel] = a.cdnUrl;
+      return acc;
+    }, {});
+    return {
+      id: v.id,
+      guid: v.guid ?? v.id,
+      title: v.title,
+      description: v.description,
+      durationMs: v.durationMs,
+      aspectRatio: v.aspectRatio != null ? Number(v.aspectRatio) : null,
+      url: v.primaryAsset?.cdnUrl ?? null,
+      thumbnailUrl: thumbnails["5"] ?? thumbnails["15"] ?? thumbnails["30"] ?? null,
+      thumbnailUrls: thumbnails as { "5"?: string; "15"?: string; "30"?: string },
+      category: v.category ? { id: v.category.id, name: v.category.name, slug: v.category.slug } : null,
+      likeCount: v.likeCount,
+      upVoteCount: v.upVoteCount,
+      superVoteCount: v.superVoteCount,
+      createdAt: v.createdAt.toISOString(),
+    };
+  });
 
   return { items: feed, nextCursor, hasMore };
 }

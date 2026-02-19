@@ -5,6 +5,8 @@ import userRoutes from "./routes/user.routes.js";
 import appRoutes from "./routes/app.routes.js";
 import eventRoutes from "./routes/event.routes.js";
 import feedRoutes from "./routes/feed.routes.js";
+import categoriesRoutes from "./routes/categories.routes.js";
+import videoRoutes from "./routes/video.routes.js";
 import voteRoutes from "./routes/vote.routes.js";
 
 export async function buildApp(opts?: { logger?: boolean }) {
@@ -14,6 +16,8 @@ export async function buildApp(opts?: { logger?: boolean }) {
   await fastify.register(userRoutes, { prefix: "/api/users" });
   await fastify.register(appRoutes, { prefix: "/api/apps" });
   await fastify.register(feedRoutes, { prefix: "/api/feed" });
+  await fastify.register(categoriesRoutes, { prefix: "/api/categories" });
+  await fastify.register(videoRoutes, { prefix: "/api/videos" });
   await fastify.register(voteRoutes, { prefix: "/api/videos" });
   await fastify.register(eventRoutes, { prefix: "/events" });
   fastify.get("/health", async () => ({ ok: true }));

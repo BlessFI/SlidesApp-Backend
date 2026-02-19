@@ -12,12 +12,16 @@ export async function authGuard(
   reply: FastifyReply
 ): Promise<void> {
   try {
-    const token = request.headers.authorization?.replace(/^Bearer\s+/i, "");
+    const authHeader = request.headers.authorization;
+    const token = authHeader?.replace(/^Bearer\s+/i, "").trim();
     if (!token) {
-      return reply.status(401).send({ error: "Missing or invalid authorization" });
+      return reply.status(401).send({
+        error: "Missing or invalid authorization",
+        hint: "Use header: Authorization: Bearer <token> with the token from login/register",
+      });
     }
     const payload = await request.server.verifyToken(token);
-    if (!payload.appId) {
+    if (!payload?.appId) {
       return reply.status(401).send({ error: "Invalid token: missing app context" });
     }
     const app = await getAppById(payload.appId);
@@ -26,9 +30,16 @@ export async function authGuard(
     }
     const req = request as FastifyRequest & TenantContext;
     req.userId = payload.sub;
-    req.userEmail = payload.email;
+    req.userEmail = payload.email ?? "";
     req.appId = payload.appId;
-  } catch {
-    return reply.status(401).send({ error: "Invalid or expired token" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid or expired token";
+    if (process.env.NODE_ENV !== "production") {
+      request.log?.warn?.({ err }, "Auth guard: token verification failed");
+    }
+    return reply.status(401).send({
+      error: "Invalid or expired token",
+      ...(process.env.NODE_ENV !== "production" && { detail: message }),
+    });
   }
 }

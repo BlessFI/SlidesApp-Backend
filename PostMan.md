@@ -234,6 +234,32 @@ Fetch feed content (ready videos) for an app. App via **query `app_id`**, **head
 
 ---
 
+## 4b. Categories (list for app)
+
+App via **query `app_id`**, **header `X-App-Id`**, or **JWT**. Use category `id` in `POST /api/videos` or feed `category_id` filter.
+
+### GET /api/categories
+
+| Field   | Value |
+|--------|--------|
+| **Method** | `GET` |
+| **URL**    | `{{baseUrl}}/api/categories?app_id={{appId}}` |
+| **Headers** | Optional `X-App-Id: {{appId}}` or `Authorization: Bearer {{token}}` |
+
+**Response (200):**
+```json
+{
+  "categories": [
+    { "id": "uuid", "name": "News", "slug": "news" },
+    { "id": "uuid", "name": "Sports", "slug": "sports" }
+  ]
+}
+```
+
+**Errors:** `400` missing app context; `404` app not found.
+
+---
+
 ## 5. Events (M2 – event logging)
 
 App context via **body `app_id`**, **header `X-App-Id`**, or **JWT** (if present). Optional auth for anonymous events.
@@ -308,7 +334,170 @@ Example:
 
 ---
 
-## 6. Video interactions (like, up_vote, super_vote)
+## 6. Video create and update (upload)
+
+Require **Authorization: Bearer {{token}}**. Creates/updates videos in the same app as the token. Optional video/thumbnail uploads go to Cloudflare R2 when env is configured.
+
+**Token tip:** Use the **string** value from the login/register response (e.g. `response.token` or `data.token`), not the whole JSON. Header must be exactly: `Authorization: Bearer <that-string>`.
+
+### GET /api/videos/:videoId (fetch one video)
+
+Use this to **fetch a video you uploaded** (e.g. to poll until `status` is `"ready"`). Same app as your token.
+
+| Field   | Value |
+|--------|--------|
+| **Method** | `GET` |
+| **URL**    | `{{baseUrl}}/api/videos/{{videoId}}` |
+| **Headers** | `Authorization: Bearer {{token}}` |
+
+**Response (200):** Video with `id`, `status` (`processing` \| `ready` \| `failed`), `assets`, `primaryAsset` (HLS URL when ready), `category`, etc.
+
+**Response (404):** Video not found or not in your app.
+
+### POST /api/videos (upload video)
+
+| Field   | Value |
+|--------|--------|
+| **Method** | `POST` |
+| **URL**    | `{{baseUrl}}/api/videos` |
+| **Headers** | `Content-Type: application/json`, `Authorization: Bearer {{token}}` |
+| **Body** (raw JSON) | See below |
+
+**Request body:**
+
+| Field             | Type   | Required | Description |
+|-------------------|--------|----------|-------------|
+| `durationMs`      | number | Yes      | Video duration in milliseconds |
+| `title`           | string | No       | Video title |
+| `description`     | string | No       | Video description |
+| `topicId`         | string | No       | UUID of a TaxonomyNode with kind `topic` |
+| `categoryId`      | string | No       | UUID of a TaxonomyNode with kind `category` |
+| `subjectId`       | string | No       | UUID of a TaxonomyNode with kind `subject` |
+| `aspectRatio`     | number | No       | e.g. 1.78 for 16:9 |
+| `videoUrl`        | string | No*      | Existing video URL (use this **or** `videoBase64`) |
+| `videoBase64`     | string | No*      | Data URL or base64 video to upload to R2 (use this **or** `videoUrl`) |
+| `thumbnailBase64` | string | No       | Data URL or base64 image to upload to R2 as thumbnail |
+
+\* One of `videoUrl` or `videoBase64` is required.
+
+**Example – create with existing URL:**
+```json
+{
+  "durationMs": 60000,
+  "title": "My first reel",
+  "description": "Short clip",
+  "categoryId": "uuid-of-your-category",
+  "videoUrl": "https://example.com/video.mp4"
+}
+```
+
+**Example – create with base64 upload to R2:**
+```json
+{
+  "durationMs": 45000,
+  "title": "Uploaded reel",
+  "categoryId": "uuid-of-your-category",
+  "videoBase64": "data:video/mp4;base64,AAAAIGZ0eXBpc29t...",
+  "thumbnailBase64": "data:image/png;base64,iVBORw0KGgo..."
+}
+```
+
+**Response (201):** Created video with `id`, `assets`, `primaryAsset`, and metadata. Video starts with **`status: "processing"`**; when the background job finishes it becomes **`"ready"** (or **`"failed"** on error). **Errors:** `400` missing both `videoUrl` and `videoBase64`; `401` missing/invalid token; `503` R2 env not set when using base64 upload.
+
+---
+
+#### Testing the video processing pipeline (HLS + 3 thumbnails)
+
+1. **Register/Login** and set `Authorization: Bearer {{token}}`.
+2. **POST** the request below. The backend will enqueue a job (or run in-process if Redis is down), then return immediately with `status: "processing"`.
+3. When processing finishes, the video gets **HLS** (9:16, 1920p) and **3 thumbnails** (5s, 15s, 30s) on R2, and **`status`** becomes **`"ready"**. It will then appear in **GET /api/feed**.
+
+**Endpoint:** `POST {{baseUrl}}/api/videos`
+
+**Headers:**
+- `Content-Type: application/json`
+- `Authorization: Bearer {{token}}`
+
+**Minimal body (videoUrl – easiest to test):**
+```json
+{
+  "durationMs": 60000,
+  "title": "Test processing",
+  "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+}
+```
+
+**With category (if you have a category UUID):**
+```json
+{
+  "durationMs": 60000,
+  "title": "Test processing",
+  "description": "Pipeline test",
+  "categoryId": "YOUR_CATEGORY_UUID_HERE",
+  "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+}
+```
+
+**Example 201 response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "appId": "...",
+  "creatorId": "...",
+  "status": "processing",
+  "title": "Test processing",
+  "description": null,
+  "durationMs": 60000,
+  "aspectRatio": null,
+  "primaryAssetId": null,
+  "assets": [],
+  "primaryAsset": null,
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+```
+
+After a while, call **GET /api/feed?app_id={{appId}}** and look for this video (same `id`). When `status` is `"ready"`, the item will have `url` (HLS manifest) and `thumbnailUrl` / `thumbnailUrls` (5, 15, 30s).
+
+---
+
+### PATCH /api/videos/:videoId (update video)
+
+| Field   | Value |
+|--------|--------|
+| **Method** | `PATCH` |
+| **URL**    | `{{baseUrl}}/api/videos/{{videoId}}` |
+| **Headers** | `Content-Type: application/json`, `Authorization: Bearer {{token}}` |
+| **Body** (raw JSON) | See below |
+
+**Request body:** All fields optional. Only the video’s creator (same app) can update.
+
+| Field             | Type   | Description |
+|-------------------|--------|-------------|
+| `title`           | string | Video title |
+| `description`     | string | Video description |
+| `topicId`         | string | TaxonomyNode UUID (topic) |
+| `categoryId`      | string | TaxonomyNode UUID (category) |
+| `subjectId`       | string | TaxonomyNode UUID (subject) |
+| `durationMs`       | number | Duration in ms |
+| `aspectRatio`     | number | e.g. 1.78 |
+| `videoBase64`     | string | New primary video (uploaded to R2) |
+| `thumbnailBase64` | string | New thumbnail (uploaded to R2) |
+
+**Example:**
+```json
+{
+  "title": "Updated title",
+  "description": "New description",
+  "categoryId": "uuid-of-category"
+}
+```
+
+**Response (200):** Updated video with `assets`, `primaryAsset`. **Errors:** `401` missing/invalid token; `404` video not found or not owned by you; `503` R2 env not set when using base64.
+
+---
+
+## 7. Video interactions (like, up_vote, super_vote)
 
 Require **Authorization: Bearer {{token}}**. Video must belong to the same app as the token.
 
@@ -392,7 +581,7 @@ If the vote is denied (e.g. daily limit), `vote.isDenied` is `true` and `vote.de
 
 ---
 
-## 7. Health (no auth)
+## 8. Health (no auth)
 
 | Field   | Value |
 |--------|--------|
@@ -411,7 +600,7 @@ If the vote is denied (e.g. daily limit), `vote.isDenied` is `true` and `vote.de
 | `appId`   | (copy from Create App response `id`) | After **Create App** |
 | `token`   | (copy from Register/Login response `token`) | After **Register** or **Login** |
 | `userId`  | (copy from `user.id` or from list users) | When testing GET /api/users/:id |
-| `videoId` | (copy from feed item `id` or video uuid) | When testing POST /api/videos/:videoId/vote |
+| `videoId` | (copy from feed item `id` or video uuid) | When testing PATCH /api/videos/:videoId or POST /api/videos/:videoId/vote |
 
 ---
 
@@ -423,6 +612,6 @@ If the vote is denied (e.g. daily limit), `vote.isDenied` is `true` and `vote.de
 4. **GET** `/api/users` with same header to list users in the app.
 5. **POST** `/api/auth/logout` when done (client discards token).
 6. **POST** `/events` with `app_id` in body (or `X-App-Id`) to log an event; **GET** `/events?app_id=...` to query.
-7. **GET** `/api/feed?app_id={{appId}}` → copy a video `id` → set `videoId`. **POST** `/api/videos/{{videoId}}/vote` with body `{ "voteType": "like" }` and `Authorization: Bearer {{token}}`.
+7. **POST** `/api/videos` with `Authorization: Bearer {{token}}` and body e.g. `{ "durationMs": 60000, "title": "Test", "videoUrl": "https://example.com/video.mp4" }` to upload a video; or **GET** `/api/feed?app_id={{appId}}` → copy a video `id` → set `videoId`. **PATCH** `/api/videos/{{videoId}}` to update; **POST** `/api/videos/{{videoId}}/vote` with body `{ "voteType": "like" }` to vote.
 
 If you use a second app `id` in login, the token will be for that app and `/api/users` will show only users in that app (multi-tenant isolation).
