@@ -57,12 +57,19 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
 - **Feed** (app-scoped video feed; app via `app_id` query, `X-App-Id` header, or JWT)
   - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=` (single or multiple IDs: comma-separated or repeated), `?topic_id=`, `?subject_id=`, `?limit=`, `?cursor=`. Returns `{ items, nextCursor, hasMore }` with each item: `id`, `guid`, `title`, `url`, `mp4Url`, `thumbnailUrl`, `thumbnailUrls`, `durationMs`, `categories`, `topics`, `subjects` (arrays), vote counts, etc.
 - **Categories** (app-scoped; app via `app_id`, `X-App-Id`, or JWT)
-  - `GET /api/categories` — list taxonomy categories for the app. Returns `{ categories: [{ id, name, slug }] }`. Use `id` as `categoryId` in video create/update or feed filter.
+  - `GET /api/categories` — list taxonomy categories for the app. Returns `{ categories: [{ id, name, slug }] }`.
+- **Taxonomy** (controlled vocabulary; app via `app_id`, `X-App-Id`, or JWT)
+  - `GET /api/taxonomy?kind=category|topic|subject` — list taxonomy nodes for the app. Returns `{ categories }`, `{ topics }`, or `{ subjects }`. Only predefined IDs are valid for video tags (no free-text).
+- **Ingest default rules** (deterministic defaults; require `Authorization: Bearer <token>`; app from JWT)
+  - `GET /api/ingest-default-rules` — list rules (source_key → default category/topic/subject IDs).
+  - `POST /api/ingest-default-rules` — create/update rule. Body: `sourceKey`, optional `defaultCategoryIds`, `defaultTopicIds`, `defaultSubjectIds`.
+  - `DELETE /api/ingest-default-rules/:ruleId` — delete rule.
 - **Video create/get/update** (require `Authorization: Bearer <token>`)
-  - `POST /api/videos` — create video. Body: `durationMs` (required), optional `title`, `description`, `categoryIds`, `topicIds`, `subjectIds` (arrays of UUIDs), `aspectRatio`, and either `videoUrl` or `videoBase64`. The source MP4 is uploaded to R2 immediately and the video is set to **`status: "ready"`** so it appears in the feed right away (playable as MP4). In the background, the job transcodes to HLS (9:16, 1920p) and generates thumbnails at 5s, 15s, 30s; when done, the feed URL switches to the HLS manifest (MP4 asset is kept). **Requires FFmpeg** (ffmpeg-static or on PATH) and Cloudflare R2 env vars.
+  - `POST /api/videos` — create video. Body: `durationMs` (required), optional `title`, `description`, `categoryIds`, `topicIds`, `subjectIds` (arrays of UUIDs from taxonomy), `ingestSource` (key for rule-based defaults), `aspectRatio`, and either `videoUrl` or `videoBase64`. Tags are validated against app taxonomy. `tagging_source` is set to `manual` or `rule` when defaults apply. The source MP4 is uploaded to R2 immediately and the video is set to **`status: "ready"`** so it appears in the feed right away (playable as MP4). In the background, the job transcodes to HLS (9:16, 1920p) and generates thumbnails at 5s, 15s, 30s; when done, the feed URL switches to the HLS manifest (MP4 asset is kept). **Requires FFmpeg** (ffmpeg-static or on PATH) and Cloudflare R2 env vars.
   - `GET /api/videos` — list videos you posted (same app as token). Query: `?limit=`, `?cursor=`. Returns `{ videos, nextCursor, hasMore }`.
   - `GET /api/videos/:videoId` — fetch a single video (same app as token). Use the `id` from the create response to poll until `status` is `"ready"`.
-  - `PATCH /api/videos/:videoId` — update video metadata and/or upload new primary/thumbnail (same app, creator only).
+  - `PATCH /api/videos/:videoId` — update video metadata and/or upload new primary/thumbnail (same app, creator only). Optional `taggingSource`: `manual` | `rule` | `ai_suggested` | `ai_confirmed`.
+  - `POST /api/videos/bulk-tag` — bulk update tags. Body: `videoIds` (required), optional `categoryIds`, `topicIds`, `subjectIds`, `taggingSource`. For admin/ingestion UI.
 - **Video interactions** (like, up_vote, super_vote; require `Authorization: Bearer <token>`)
   - `POST /api/videos/:videoId/vote` — body: `{ "voteType": "like" | "up_vote" | "super_vote", "gestureSource?", "requestId?", "rankPosition?", "feedMode?" }`. Records vote and increments video counts. Returns `{ vote, counts }`.
 - **Events** (M2 event logging; app-scoped via `app_id` in body/header or JWT)
@@ -81,6 +88,11 @@ const EVENT_API_BASE = 'https://your-backend-domain.com';  // no trailing slash
 ```
 
 Use **HTTPS** in production. Local dev: `http://localhost:3000` (or your server port). Events are stored in Postgres (multi-tenant by `app_id`).
+
+## Tagging system (M2) and AI tagging (M3)
+
+- **M2 (current):** Controlled vocabulary only. Categories, topics, and subjects must be predefined per app (`GET /api/taxonomy`). Create/update video and bulk-tag validate IDs. `tagging_source` is set to `manual` or `rule` (when ingest defaults apply). Optional `ingestSource` on create uses **ingest default rules** for deterministic defaults. After a video becomes ready, a **tagging queue** job runs (currently just sets `tagging_source` to `manual` if null). Video model stores fields for M3: `ai_suggested_category_ids`, `ai_suggested_topic_ids`, `ai_suggested_subject_ids`, `ai_confidence`, `ai_model_version` (all optional; not used yet).
+- **M3 (later):** AI tagging can be added behind a feature flag. The tagging worker will populate suggestions; humans confirm; `tagging_source` becomes `ai_suggested` or `ai_confirmed`. No AI implementation in this repo yet.
 
 ## Test
 

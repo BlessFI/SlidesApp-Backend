@@ -23,19 +23,35 @@ model User {
 }
 
 model App {
-  id            String           @id @default(cuid())
-  name          String
-  slug          String           @unique
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  events        Event[]
-  purchases     Purchase[]
-  reports       Report[]
-  taxonomyNodes TaxonomyNode[]
-  profiles      UserAppProfile[]
-  videoAssets   VideoAsset[]
-  videos        Video[]
-  votes         Vote[]
+  id                  String               @id @default(cuid())
+  name                String
+  slug                String               @unique
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  events              Event[]
+  purchases           Purchase[]
+  reports             Report[]
+  taxonomyNodes       TaxonomyNode[]
+  ingestDefaultRules  IngestDefaultRule[]
+  profiles            UserAppProfile[]
+  videoAssets         VideoAsset[]
+  videos              Video[]
+  votes               Vote[]
+}
+
+model IngestDefaultRule {
+  id                  String   @id @default(uuid()) @db.Uuid
+  appId               String   @map("app_id")
+  sourceKey           String   @map("source_key")
+  defaultCategoryIds  String[] @default([]) @map("default_category_ids")
+  defaultTopicIds     String[] @default([]) @map("default_topic_ids")
+  defaultSubjectIds   String[] @default([]) @map("default_subject_ids")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  app                 App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, sourceKey])
+  @@map("ingest_default_rules")
 }
 
 model UserAppProfile {
@@ -80,6 +96,13 @@ model Video {
   categoryIds    String[]      @default([]) @map("category_ids")
   topicIds       String[]      @default([]) @map("topic_ids")
   subjectIds     String[]      @default([]) @map("subject_ids")
+  ingestSource   String?       @map("ingest_source")
+  taggingSource  String?       @map("tagging_source")
+  aiSuggestedCategoryIds String[] @default([]) @map("ai_suggested_category_ids")
+  aiSuggestedTopicIds    String[] @default([]) @map("ai_suggested_topic_ids")
+  aiSuggestedSubjectIds  String[] @default([]) @map("ai_suggested_subject_ids")
+  aiConfidence   Decimal?      @map("ai_confidence") @db.Decimal(3, 2)
+  aiModelVersion String?       @map("ai_model_version")
   durationMs     Int           @map("duration_ms")
   aspectRatio    Decimal?      @map("aspect_ratio") @db.Decimal(4, 2)
   primaryAssetId String?       @map("primary_asset_id") @db.Uuid

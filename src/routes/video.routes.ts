@@ -22,6 +22,7 @@ const createVideoSchema = {
       categoryIds: { type: "array", items: { type: "string", format: "uuid" } },
       topicIds: { type: "array", items: { type: "string", format: "uuid" } },
       subjectIds: { type: "array", items: { type: "string", format: "uuid" } },
+      ingestSource: { type: "string" },
       durationMs: { type: "number" },
       aspectRatio: { type: "number" },
       videoUrl: { type: "string" },
@@ -40,10 +41,25 @@ const updateVideoSchema = {
       categoryIds: { type: "array", items: { type: "string", format: "uuid" } },
       topicIds: { type: "array", items: { type: "string", format: "uuid" } },
       subjectIds: { type: "array", items: { type: "string", format: "uuid" } },
+      taggingSource: { type: "string", enum: ["manual", "rule", "ai_suggested", "ai_confirmed"] },
       durationMs: { type: "number" },
       aspectRatio: { type: "number" },
       videoBase64: { type: "string" },
       thumbnailBase64: { type: "string" },
+    },
+  },
+};
+
+const bulkTagSchema = {
+  body: {
+    type: "object",
+    required: ["videoIds"],
+    properties: {
+      videoIds: { type: "array", items: { type: "string", format: "uuid" } },
+      categoryIds: { type: "array", items: { type: "string", format: "uuid" } },
+      topicIds: { type: "array", items: { type: "string", format: "uuid" } },
+      subjectIds: { type: "array", items: { type: "string", format: "uuid" } },
+      taggingSource: { type: "string", enum: ["manual", "rule", "ai_suggested", "ai_confirmed"] },
     },
   },
 };
@@ -56,6 +72,7 @@ export default async function videoRoutes(fastify: FastifyInstance) {
       categoryIds?: string[];
       topicIds?: string[];
       subjectIds?: string[];
+      ingestSource?: string;
       durationMs: number;
       aspectRatio?: number;
       videoUrl?: string;
@@ -73,6 +90,7 @@ export default async function videoRoutes(fastify: FastifyInstance) {
           categoryIds?: string[];
           topicIds?: string[];
           subjectIds?: string[];
+          ingestSource?: string;
           durationMs: number;
           aspectRatio?: number;
           videoUrl?: string;
@@ -93,6 +111,7 @@ export default async function videoRoutes(fastify: FastifyInstance) {
           categoryIds: body.categoryIds ?? [],
           topicIds: body.topicIds ?? [],
           subjectIds: body.subjectIds ?? [],
+          ingestSource: body.ingestSource ?? null,
           durationMs: body.durationMs,
           aspectRatio: body.aspectRatio ?? null,
           videoUrl: body.videoUrl ?? null,
@@ -102,6 +121,9 @@ export default async function videoRoutes(fastify: FastifyInstance) {
         return reply.status(201).send(video);
       } catch (e) {
         const err = e as Error;
+        if (err.message?.includes("Invalid category") || err.message?.includes("Invalid topic") || err.message?.includes("Invalid subject")) {
+          return reply.status(400).send({ error: err.message });
+        }
         if (err.message?.includes("Either videoUrl or videoBase64")) {
           return reply.status(400).send({ error: err.message });
         }
@@ -156,6 +178,7 @@ export default async function videoRoutes(fastify: FastifyInstance) {
       categoryIds?: string[];
       topicIds?: string[];
       subjectIds?: string[];
+      taggingSource?: "manual" | "rule" | "ai_suggested" | "ai_confirmed";
       durationMs?: number;
       aspectRatio?: number;
       videoBase64?: string;
@@ -173,6 +196,7 @@ export default async function videoRoutes(fastify: FastifyInstance) {
           categoryIds?: string[];
           topicIds?: string[];
           subjectIds?: string[];
+          taggingSource?: "manual" | "rule" | "ai_suggested" | "ai_confirmed";
           durationMs?: number;
           aspectRatio?: number;
           videoBase64?: string;
@@ -194,6 +218,7 @@ export default async function videoRoutes(fastify: FastifyInstance) {
           categoryIds: body.categoryIds,
           topicIds: body.topicIds,
           subjectIds: body.subjectIds,
+          taggingSource: body.taggingSource,
           durationMs: body.durationMs,
           aspectRatio: body.aspectRatio,
           videoBase64: body.videoBase64,
@@ -205,11 +230,55 @@ export default async function videoRoutes(fastify: FastifyInstance) {
         return reply.send(video);
       } catch (e) {
         const err = e as Error;
+        if (err.message?.includes("Invalid category") || err.message?.includes("Invalid topic") || err.message?.includes("Invalid subject")) {
+          return reply.status(400).send({ error: err.message });
+        }
         if (err.message?.includes("Missing Cloudflare R2")) {
           return reply.status(503).send({ error: "Upload service unavailable" });
         }
         throw e;
       }
+    }
+  );
+
+  fastify.post<{
+    Body: {
+      videoIds: string[];
+      categoryIds?: string[];
+      topicIds?: string[];
+      subjectIds?: string[];
+      taggingSource?: "manual" | "rule" | "ai_suggested" | "ai_confirmed";
+    };
+  }>(
+    "/bulk-tag",
+    { schema: bulkTagSchema, preHandler: authGuard },
+    async (
+      request: FastifyRequest<{
+        Body: {
+          videoIds: string[];
+          categoryIds?: string[];
+          topicIds?: string[];
+          subjectIds?: string[];
+          taggingSource?: "manual" | "rule" | "ai_suggested" | "ai_confirmed";
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const req = request as AuthenticatedRequest;
+      const body = request.body;
+      const result = await videoService.bulkTagVideos({
+        appId: req.appId,
+        userId: req.userId,
+        videoIds: body.videoIds,
+        categoryIds: body.categoryIds,
+        topicIds: body.topicIds,
+        subjectIds: body.subjectIds,
+        taggingSource: body.taggingSource,
+      });
+      if (result.errors.length > 0 && result.updated === 0) {
+        return reply.status(400).send({ error: result.errors.join("; "), updated: 0 });
+      }
+      return reply.send({ updated: result.updated, errors: result.errors });
     }
   );
 }

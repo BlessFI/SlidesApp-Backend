@@ -10,18 +10,24 @@ import path from "path";
 import os from "os";
 import { processVideo } from "./transcode.service.js";
 import { enqueueProcessVideo } from "../queues/videoQueue.js";
+import { validateTaxonomyIds } from "./taxonomy.service.js";
+
+export const TAGGING_SOURCE = ["manual", "rule", "ai_suggested", "ai_confirmed"] as const;
+export type TaggingSource = (typeof TAGGING_SOURCE)[number];
 
 export interface CreateVideoInput {
   appId: string;
   creatorId: string;
   title?: string | null;
   description?: string | null;
-  /** List of category UUIDs. */
+  /** List of category UUIDs (must exist in app taxonomy). */
   categoryIds?: string[];
-  /** List of topic UUIDs. */
+  /** List of topic UUIDs (must exist in app taxonomy). */
   topicIds?: string[];
-  /** List of subject UUIDs. */
+  /** List of subject UUIDs (must exist in app taxonomy). */
   subjectIds?: string[];
+  /** Ingest source key for deterministic defaults (e.g. "partner_x" → default tags). */
+  ingestSource?: string | null;
   durationMs: number;
   aspectRatio?: number | null;
   /** Existing video URL; used when not uploading base64. */
@@ -38,17 +44,14 @@ export interface UpdateVideoInput {
   videoId: string;
   title?: string | null;
   description?: string | null;
-  /** List of category UUIDs. */
   categoryIds?: string[];
-  /** List of topic UUIDs. */
   topicIds?: string[];
-  /** List of subject UUIDs. */
   subjectIds?: string[];
+  /** tagging_source: manual | rule | ai_suggested | ai_confirmed */
+  taggingSource?: TaggingSource | null;
   durationMs?: number;
   aspectRatio?: number | null;
-  /** New primary video: base64 or data URL to upload to R2. */
   videoBase64?: string | null;
-  /** New thumbnail: base64 or data URL to upload to R2. */
   thumbnailBase64?: string | null;
 }
 
@@ -106,6 +109,39 @@ export async function createVideo(input: CreateVideoInput) {
     throw new Error("Either videoUrl or videoBase64 is required");
   }
 
+  let categoryIds = input.categoryIds ?? [];
+  let topicIds = input.topicIds ?? [];
+  let subjectIds = input.subjectIds ?? [];
+  let taggingSource: TaggingSource = "manual";
+
+  if (input.ingestSource?.trim()) {
+    const rule = await prisma.ingestDefaultRule.findUnique({
+      where: { appId_sourceKey: { appId: input.appId, sourceKey: input.ingestSource.trim() } },
+    });
+    if (rule) {
+      if (categoryIds.length === 0) categoryIds = rule.defaultCategoryIds;
+      if (topicIds.length === 0) topicIds = rule.defaultTopicIds;
+      if (subjectIds.length === 0) subjectIds = rule.defaultSubjectIds;
+      taggingSource = "rule";
+    }
+  }
+
+  const validation = await validateTaxonomyIds(input.appId, {
+    categoryIds: categoryIds.length ? categoryIds : undefined,
+    topicIds: topicIds.length ? topicIds : undefined,
+    subjectIds: subjectIds.length ? subjectIds : undefined,
+  });
+  if (!validation.valid) {
+    const msg = [
+      validation.invalidCategoryIds?.length ? `Invalid category IDs: ${validation.invalidCategoryIds.join(", ")}` : null,
+      validation.invalidTopicIds?.length ? `Invalid topic IDs: ${validation.invalidTopicIds.join(", ")}` : null,
+      validation.invalidSubjectIds?.length ? `Invalid subject IDs: ${validation.invalidSubjectIds.join(", ")}` : null,
+    ]
+      .filter(Boolean)
+      .join("; ");
+    throw new Error(msg);
+  }
+
   const sourcePath = await writeSourceToTemp(input.videoBase64, input.videoUrl);
 
   const video = await prisma.video.create({
@@ -115,9 +151,11 @@ export async function createVideo(input: CreateVideoInput) {
       status: "processing",
       title: input.title ?? null,
       description: input.description ?? null,
-      categoryIds: input.categoryIds ?? [],
-      topicIds: input.topicIds ?? [],
-      subjectIds: input.subjectIds ?? [],
+      categoryIds,
+      topicIds,
+      subjectIds,
+      ingestSource: input.ingestSource?.trim() ?? null,
+      taggingSource,
       durationMs: input.durationMs,
       aspectRatio: null,
       primaryAssetId: null,
@@ -265,12 +303,35 @@ export async function updateVideo(input: UpdateVideoInput) {
     });
   }
 
+  if (
+    input.categoryIds !== undefined ||
+    input.topicIds !== undefined ||
+    input.subjectIds !== undefined
+  ) {
+    const validation = await validateTaxonomyIds(input.appId, {
+      categoryIds: input.categoryIds?.length ? input.categoryIds : undefined,
+      topicIds: input.topicIds?.length ? input.topicIds : undefined,
+      subjectIds: input.subjectIds?.length ? input.subjectIds : undefined,
+    });
+    if (!validation.valid) {
+      const msg = [
+        validation.invalidCategoryIds?.length ? `Invalid category IDs: ${validation.invalidCategoryIds.join(", ")}` : null,
+        validation.invalidTopicIds?.length ? `Invalid topic IDs: ${validation.invalidTopicIds.join(", ")}` : null,
+        validation.invalidSubjectIds?.length ? `Invalid subject IDs: ${validation.invalidSubjectIds.join(", ")}` : null,
+      ]
+        .filter(Boolean)
+        .join("; ");
+      throw new Error(msg);
+    }
+  }
+
   const updateData: Parameters<typeof prisma.video.update>[0]["data"] = {
     title: input.title !== undefined ? input.title : undefined,
     description: input.description !== undefined ? input.description : undefined,
     categoryIds: input.categoryIds !== undefined ? input.categoryIds : undefined,
     topicIds: input.topicIds !== undefined ? input.topicIds : undefined,
     subjectIds: input.subjectIds !== undefined ? input.subjectIds : undefined,
+    taggingSource: input.taggingSource !== undefined ? input.taggingSource : undefined,
     durationMs: input.durationMs,
     aspectRatio: input.aspectRatio !== undefined ? input.aspectRatio : undefined,
   };
@@ -300,4 +361,66 @@ export async function updateVideo(input: UpdateVideoInput) {
       : [],
   ]);
   return { ...updated, categories, topics, subjects };
+}
+
+export interface BulkTagInput {
+  appId: string;
+  userId: string;
+  videoIds: string[];
+  categoryIds?: string[];
+  topicIds?: string[];
+  subjectIds?: string[];
+  taggingSource?: TaggingSource | null;
+}
+
+/**
+ * Bulk update tags (and optionally tagging_source) for multiple videos in the app.
+ * Only videos in the app are updated. Validates taxonomy IDs.
+ */
+export async function bulkTagVideos(input: BulkTagInput): Promise<{ updated: number; errors: string[] }> {
+  const errors: string[] = [];
+  if (input.videoIds.length === 0) {
+    return { updated: 0, errors: ["videoIds must not be empty"] };
+  }
+
+  if (
+    (input.categoryIds?.length ?? 0) > 0 ||
+    (input.topicIds?.length ?? 0) > 0 ||
+    (input.subjectIds?.length ?? 0) > 0
+  ) {
+    const validation = await validateTaxonomyIds(input.appId, {
+      categoryIds: input.categoryIds,
+      topicIds: input.topicIds,
+      subjectIds: input.subjectIds,
+    });
+    if (!validation.valid) {
+      if (validation.invalidCategoryIds?.length)
+        errors.push(`Invalid category IDs: ${validation.invalidCategoryIds.join(", ")}`);
+      if (validation.invalidTopicIds?.length)
+        errors.push(`Invalid topic IDs: ${validation.invalidTopicIds.join(", ")}`);
+      if (validation.invalidSubjectIds?.length)
+        errors.push(`Invalid subject IDs: ${validation.invalidSubjectIds.join(", ")}`);
+      return { updated: 0, errors };
+    }
+  }
+
+  const data: Parameters<typeof prisma.video.updateMany>[0]["data"] = {};
+  if (input.categoryIds !== undefined) data.categoryIds = input.categoryIds;
+  if (input.topicIds !== undefined) data.topicIds = input.topicIds;
+  if (input.subjectIds !== undefined) data.subjectIds = input.subjectIds;
+  if (input.taggingSource !== undefined) data.taggingSource = input.taggingSource;
+
+  if (Object.keys(data).length === 0) {
+    return { updated: 0, errors: ["Provide at least one of categoryIds, topicIds, subjectIds, taggingSource"] };
+  }
+
+  const result = await prisma.video.updateMany({
+    where: {
+      id: { in: input.videoIds },
+      appId: input.appId,
+    },
+    data,
+  });
+
+  return { updated: result.count, errors };
 }

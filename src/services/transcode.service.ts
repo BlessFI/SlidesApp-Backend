@@ -10,6 +10,7 @@ import path from "path";
 import os from "os";
 import { prisma } from "../lib/prisma.js";
 import { uploadBufferToR2 } from "../lib/r2.js";
+import { enqueueTaggingAfterVideoReady } from "../queues/taggingQueue.js";
 
 if (typeof ffmpegStatic === "string" && ffmpegStatic) {
   ffmpeg.setFfmpegPath(ffmpegStatic);
@@ -213,6 +214,9 @@ export async function processVideo(input: ProcessVideoInput): Promise<void> {
         aspectRatio: ASPECT_RATIO_9_16,
       },
     });
+
+    // Tagging hook: M2 sets tagging_source to "manual" if null; M3 can run AI suggestion behind flag
+    enqueueTaggingAfterVideoReady(videoId, appId).catch(() => {});
   } catch (err) {
     // Video already has MP4 and status "ready"; don't set "failed" so feed still shows it
     throw err;
