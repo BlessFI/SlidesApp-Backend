@@ -8,6 +8,14 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
 - **app_id enforced on every request**: JWT includes `appId`; all user queries are scoped by it. App A cannot access App B data.
 - **Test**: run `npm test` to verify tenant isolation (App A token cannot see App B users).
 
+## Docs (env / local / staging)
+
+- **[docs/ENV.md](docs/ENV.md)** — Environment variables (required vs optional, by environment)
+- **[docs/LOCAL.md](docs/LOCAL.md)** — Local development setup (clone, env, DB, run)
+- **[docs/STAGING.md](docs/STAGING.md)** — Staging deployment (env, migrations, Redis, checklist)
+
+---
+
 ## Setup
 
 1. **Install dependencies**
@@ -19,6 +27,7 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
    - Copy `.env.example` to `.env`
    - Set `DATABASE_URL` to your Postgres/NeonDB connection string (e.g. from [Neon](https://neon.tech))
    - Set `JWT_SECRET` for production
+   - See [docs/ENV.md](docs/ENV.md) for all variables (local / staging / production)
 
 3. **Database**
    ```bash
