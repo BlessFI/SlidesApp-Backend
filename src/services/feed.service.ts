@@ -1,7 +1,10 @@
 import { prisma } from "../lib/prisma.js";
+import { getVoteFlagsByUserForVideos } from "./vote.service.js";
 
 export interface FeedQuery {
   appId: string;
+  /** If set, include like_by_you, upvote_by_you, supervote_by_you per item */
+  userId?: string | null;
   categoryIds?: string[];
   topicIds?: string[];
   subjectIds?: string[];
@@ -36,6 +39,14 @@ export async function getFeedForApp(query: FeedQuery) {
   const items = hasMore ? videos.slice(0, limit) : videos;
   const nextCursor = hasMore ? items[items.length - 1]?.id : null;
 
+  let voteFlagsMap = new Map<string, { like: boolean; up_vote: boolean; super_vote: boolean }>();
+  if (query.userId && items.length > 0) {
+    voteFlagsMap = await getVoteFlagsByUserForVideos(
+      query.userId,
+      items.map((v) => v.id)
+    );
+  }
+
   const allCategoryIds = [...new Set(items.flatMap((v) => v.categoryIds))];
   const allTopicIds = [...new Set(items.flatMap((v) => v.topicIds))];
   const allSubjectIds = [...new Set(items.flatMap((v) => v.subjectIds))];
@@ -60,7 +71,8 @@ export async function getFeedForApp(query: FeedQuery) {
     const categories = v.categoryIds.map((id) => categoryMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[];
     const topics = v.topicIds.map((id) => topicMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[];
     const subjects = v.subjectIds.map((id) => subjectMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[];
-    return {
+    const flags = voteFlagsMap.get(v.id) ?? { like: false, up_vote: false, super_vote: false };
+    const item = {
       id: v.id,
       guid: v.guid ?? v.id,
       title: v.title,
@@ -78,7 +90,11 @@ export async function getFeedForApp(query: FeedQuery) {
       upVoteCount: v.upVoteCount,
       superVoteCount: v.superVoteCount,
       createdAt: v.createdAt.toISOString(),
+      like_by_you: Boolean(flags.like),
+      upvote_by_you: Boolean(flags.up_vote),
+      supervote_by_you: Boolean(flags.super_vote),
     };
+    return item;
   });
 
   return { items: feed, nextCursor, hasMore };

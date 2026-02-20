@@ -27,6 +27,35 @@ export interface CreateVoteInput {
   denyReason?: string | null;
 }
 
+export interface VoteFlags {
+  like: boolean;
+  up_vote: boolean;
+  super_vote: boolean;
+}
+
+/** Get which vote types the user has cast for each video (for feed/single video "by you" flags). */
+export async function getVoteFlagsByUserForVideos(
+  userId: string,
+  videoIds: string[]
+): Promise<Map<string, VoteFlags>> {
+  if (videoIds.length === 0) return new Map();
+  const votes = await prisma.vote.findMany({
+    where: { userId, videoId: { in: videoIds } },
+    select: { videoId: true, voteType: true },
+  });
+  const map = new Map<string, VoteFlags>();
+  for (const id of videoIds) {
+    map.set(id, { like: false, up_vote: false, super_vote: false });
+  }
+  for (const v of votes) {
+    const flags = map.get(v.videoId)!;
+    if (v.voteType === "like") flags.like = true;
+    else if (v.voteType === "up_vote") flags.up_vote = true;
+    else if (v.voteType === "super_vote") flags.super_vote = true;
+  }
+  return map;
+}
+
 export async function createVote(input: CreateVoteInput) {
   const weight = WEIGHT[input.voteType] ?? 1;
   const gestureSource = input.gestureSource ?? GESTURE_SOURCE_DEFAULT[input.voteType] ?? null;

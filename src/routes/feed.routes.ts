@@ -6,7 +6,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import * as feedService from "../services/feed.service.js";
 import { getAppById } from "../services/app.service.js";
-import { getAppIdFromRequest } from "../lib/appFromRequest.js";
+import { getAppIdFromRequest, getOptionalUserIdFromRequest } from "../lib/appFromRequest.js";
 
 export default async function feedRoutes(fastify: FastifyInstance) {
   fastify.get(
@@ -31,9 +31,11 @@ export default async function feedRoutes(fastify: FastifyInstance) {
         return ids.length ? ids : undefined;
       };
       const limit = str(q.limit) ? Math.min(100, parseInt(str(q.limit)!, 10) || 50) : 50;
+      const userId = await getOptionalUserIdFromRequest(request);
 
       const result = await feedService.getFeedForApp({
         appId,
+        userId: userId ?? undefined,
         categoryIds: toIds(q.category_id),
         topicIds: toIds(q.topic_id),
         subjectIds: toIds(q.subject_id),

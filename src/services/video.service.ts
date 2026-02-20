@@ -11,6 +11,7 @@ import os from "os";
 import { processVideo } from "./transcode.service.js";
 import { enqueueProcessVideo } from "../queues/videoQueue.js";
 import { validateTaxonomyIds } from "./taxonomy.service.js";
+import { getVoteFlagsByUserForVideos } from "./vote.service.js";
 
 export const TAGGING_SOURCE = ["manual", "rule", "ai_suggested", "ai_confirmed"] as const;
 export type TaggingSource = (typeof TAGGING_SOURCE)[number];
@@ -192,13 +193,13 @@ export async function createVideo(input: CreateVideoInput) {
   return { ...created, categories, topics, subjects };
 }
 
-export async function getVideo(appId: string, videoId: string) {
+export async function getVideo(appId: string, videoId: string, userId?: string | null) {
   const video = await prisma.video.findFirst({
     where: { id: videoId, appId },
     include: { assets: true, primaryAsset: true },
   });
   if (!video) return null;
-  const [categories, topics, subjects] = await Promise.all([
+  const [categories, topics, subjects, voteFlagsMap] = await Promise.all([
     video.categoryIds.length
       ? prisma.taxonomyNode.findMany({ where: { id: { in: video.categoryIds } }, select: { id: true, name: true, slug: true } })
       : [],
@@ -208,8 +209,18 @@ export async function getVideo(appId: string, videoId: string) {
     video.subjectIds.length
       ? prisma.taxonomyNode.findMany({ where: { id: { in: video.subjectIds } }, select: { id: true, name: true, slug: true } })
       : [],
+    userId ? getVoteFlagsByUserForVideos(userId, [videoId]) : Promise.resolve(new Map()),
   ]);
-  return { ...video, categories, topics, subjects };
+  const flags = voteFlagsMap.get(videoId) ?? { like: false, up_vote: false, super_vote: false };
+  return {
+    ...video,
+    categories,
+    topics,
+    subjects,
+    like_by_you: flags.like,
+    upvote_by_you: flags.up_vote,
+    supervote_by_you: flags.super_vote,
+  };
 }
 
 export async function getMyVideos(
@@ -231,20 +242,27 @@ export async function getMyVideos(
   const allCategoryIds = [...new Set(items.flatMap((v) => v.categoryIds))];
   const allTopicIds = [...new Set(items.flatMap((v) => v.topicIds))];
   const allSubjectIds = [...new Set(items.flatMap((v) => v.subjectIds))];
-  const [categoryNodes, topicNodes, subjectNodes] = await Promise.all([
+  const [categoryNodes, topicNodes, subjectNodes, voteFlagsMap] = await Promise.all([
     allCategoryIds.length ? prisma.taxonomyNode.findMany({ where: { id: { in: allCategoryIds } }, select: { id: true, name: true, slug: true } }) : [],
     allTopicIds.length ? prisma.taxonomyNode.findMany({ where: { id: { in: allTopicIds } }, select: { id: true, name: true, slug: true } }) : [],
     allSubjectIds.length ? prisma.taxonomyNode.findMany({ where: { id: { in: allSubjectIds } }, select: { id: true, name: true, slug: true } }) : [],
+    getVoteFlagsByUserForVideos(creatorId, items.map((v) => v.id)),
   ]);
   const categoryMap = new Map(categoryNodes.map((n) => [n.id, n]));
   const topicMap = new Map(topicNodes.map((n) => [n.id, n]));
   const subjectMap = new Map(subjectNodes.map((n) => [n.id, n]));
-  const videosWithTaxonomy = items.map((v) => ({
-    ...v,
-    categories: v.categoryIds.map((id) => categoryMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
-    topics: v.topicIds.map((id) => topicMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
-    subjects: v.subjectIds.map((id) => subjectMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
-  }));
+  const videosWithTaxonomy = items.map((v) => {
+    const flags = voteFlagsMap.get(v.id) ?? { like: false, up_vote: false, super_vote: false };
+    return {
+      ...v,
+      categories: v.categoryIds.map((id) => categoryMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
+      topics: v.topicIds.map((id) => topicMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
+      subjects: v.subjectIds.map((id) => subjectMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
+      like_by_you: flags.like,
+      upvote_by_you: flags.up_vote,
+      supervote_by_you: flags.super_vote,
+    };
+  });
   return { videos: videosWithTaxonomy, nextCursor, hasMore };
 }
 

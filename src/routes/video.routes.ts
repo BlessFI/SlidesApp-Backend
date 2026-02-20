@@ -162,7 +162,7 @@ export default async function videoRoutes(fastify: FastifyInstance) {
     ) => {
       const req = request as AuthenticatedRequest;
       const { videoId } = request.params;
-      const video = await videoService.getVideo(req.appId, videoId);
+      const video = await videoService.getVideo(req.appId, videoId, req.userId);
       if (!video) {
         return reply.status(404).send({ error: "Video not found" });
       }
