@@ -15,10 +15,12 @@ type AuthenticatedRequest = FastifyRequest & TenantContext;
 const createVideoSchema = {
   body: {
     type: "object",
-    required: ["durationMs"],
+    required: ["durationMs", "primaryCategoryId"],
     properties: {
       title: { type: "string" },
       description: { type: "string" },
+      primaryCategoryId: { type: "string", format: "uuid" },
+      secondaryLabels: { type: "array", items: { type: "string" } },
       categoryIds: { type: "array", items: { type: "string", format: "uuid" } },
       topicIds: { type: "array", items: { type: "string", format: "uuid" } },
       subjectIds: { type: "array", items: { type: "string", format: "uuid" } },
@@ -38,6 +40,8 @@ const updateVideoSchema = {
     properties: {
       title: { type: "string" },
       description: { type: "string" },
+      primaryCategoryId: { type: "string", format: "uuid" },
+      secondaryLabels: { type: "array", items: { type: "string" } },
       categoryIds: { type: "array", items: { type: "string", format: "uuid" } },
       topicIds: { type: "array", items: { type: "string", format: "uuid" } },
       subjectIds: { type: "array", items: { type: "string", format: "uuid" } },
@@ -69,6 +73,8 @@ export default async function videoRoutes(fastify: FastifyInstance) {
     Body: {
       title?: string;
       description?: string;
+      primaryCategoryId: string;
+      secondaryLabels?: string[];
       categoryIds?: string[];
       topicIds?: string[];
       subjectIds?: string[];
@@ -87,6 +93,8 @@ export default async function videoRoutes(fastify: FastifyInstance) {
         Body: {
           title?: string;
           description?: string;
+          primaryCategoryId: string;
+          secondaryLabels?: string[];
           categoryIds?: string[];
           topicIds?: string[];
           subjectIds?: string[];
@@ -108,9 +116,11 @@ export default async function videoRoutes(fastify: FastifyInstance) {
           creatorId: req.userId,
           title: body.title ?? null,
           description: body.description ?? null,
-          categoryIds: body.categoryIds ?? [],
-          topicIds: body.topicIds ?? [],
-          subjectIds: body.subjectIds ?? [],
+          primaryCategoryId: body.primaryCategoryId,
+          secondaryLabels: body.secondaryLabels ?? undefined,
+          categoryIds: body.categoryIds ?? undefined,
+          topicIds: body.topicIds ?? undefined,
+          subjectIds: body.subjectIds ?? undefined,
           ingestSource: body.ingestSource ?? null,
           durationMs: body.durationMs,
           aspectRatio: body.aspectRatio ?? null,
@@ -175,6 +185,8 @@ export default async function videoRoutes(fastify: FastifyInstance) {
     Body: {
       title?: string;
       description?: string;
+      primaryCategoryId?: string;
+      secondaryLabels?: string[];
       categoryIds?: string[];
       topicIds?: string[];
       subjectIds?: string[];
@@ -193,6 +205,8 @@ export default async function videoRoutes(fastify: FastifyInstance) {
         Body: {
           title?: string;
           description?: string;
+          primaryCategoryId?: string;
+          secondaryLabels?: string[];
           categoryIds?: string[];
           topicIds?: string[];
           subjectIds?: string[];
@@ -215,6 +229,8 @@ export default async function videoRoutes(fastify: FastifyInstance) {
           videoId,
           title: body.title,
           description: body.description,
+          primaryCategoryId: body.primaryCategoryId,
+          secondaryLabels: body.secondaryLabels,
           categoryIds: body.categoryIds,
           topicIds: body.topicIds,
           subjectIds: body.subjectIds,

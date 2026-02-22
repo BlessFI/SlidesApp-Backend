@@ -17,7 +17,7 @@ export async function getFeedForApp(query: FeedQuery) {
   const where = {
     appId: query.appId,
     status: "ready" as const,
-    ...(query.categoryIds?.length ? { categoryIds: { hasSome: query.categoryIds } } : {}),
+    ...(query.categoryIds?.length ? { primaryCategoryId: { in: query.categoryIds } } : {}),
     ...(query.topicIds?.length ? { topicIds: { hasSome: query.topicIds } } : {}),
     ...(query.subjectIds?.length ? { subjectIds: { hasSome: query.subjectIds } } : {}),
   };
@@ -47,7 +47,7 @@ export async function getFeedForApp(query: FeedQuery) {
     );
   }
 
-  const allCategoryIds = [...new Set(items.flatMap((v) => v.categoryIds))];
+  const allCategoryIds = [...new Set(items.flatMap((v) => [...v.categoryIds, v.primaryCategoryId].filter(Boolean) as string[]))];
   const allTopicIds = [...new Set(items.flatMap((v) => v.topicIds))];
   const allSubjectIds = [...new Set(items.flatMap((v) => v.subjectIds))];
   const [categoryNodes, topicNodes, subjectNodes] = await Promise.all([
@@ -69,6 +69,7 @@ export async function getFeedForApp(query: FeedQuery) {
       }, {});
     const mp4Asset = assets.find((a) => a.assetType === "master");
     const categories = v.categoryIds.map((id) => categoryMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[];
+    const primaryCategory = v.primaryCategoryId ? categoryMap.get(v.primaryCategoryId) : undefined;
     const topics = v.topicIds.map((id) => topicMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[];
     const subjects = v.subjectIds.map((id) => subjectMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[];
     const flags = voteFlagsMap.get(v.id) ?? { like: false, up_vote: false, super_vote: false };
@@ -78,6 +79,8 @@ export async function getFeedForApp(query: FeedQuery) {
       title: v.title,
       description: v.description,
       durationMs: v.durationMs,
+      primaryCategory: primaryCategory ?? null,
+      secondaryLabels: v.secondaryLabels ?? [],
       aspectRatio: v.aspectRatio != null ? Number(v.aspectRatio) : null,
       url: v.primaryAsset?.cdnUrl ?? null,
       mp4Url: mp4Asset?.cdnUrl ?? null,

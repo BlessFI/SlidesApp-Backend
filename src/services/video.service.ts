@@ -21,21 +21,20 @@ export interface CreateVideoInput {
   creatorId: string;
   title?: string | null;
   description?: string | null;
-  /** List of category UUIDs (must exist in app taxonomy). */
+  /** Required: exactly one primary category UUID (powers "Same Category", feed). Must exist in app taxonomy (kind=category). */
+  primaryCategoryId: string;
+  /** Optional: secondary labels e.g. ["Weather", "Fashion"] (mapped to primary for display). */
+  secondaryLabels?: string[];
+  /** Optional: ingest rules may set; otherwise leave empty. topicIds/subjectIds for future derivation. */
   categoryIds?: string[];
-  /** List of topic UUIDs (must exist in app taxonomy). */
   topicIds?: string[];
-  /** List of subject UUIDs (must exist in app taxonomy). */
   subjectIds?: string[];
-  /** Ingest source key for deterministic defaults (e.g. "partner_x" → default tags). */
+  /** Ingest source key for deterministic defaults (e.g. "partner_x" → default primary category). */
   ingestSource?: string | null;
   durationMs: number;
   aspectRatio?: number | null;
-  /** Existing video URL; used when not uploading base64. */
   videoUrl?: string | null;
-  /** Base64 or data URL video to upload to R2. */
   videoBase64?: string | null;
-  /** Base64 or data URL thumbnail to upload to R2. */
   thumbnailBase64?: string | null;
 }
 
@@ -45,10 +44,11 @@ export interface UpdateVideoInput {
   videoId: string;
   title?: string | null;
   description?: string | null;
+  primaryCategoryId?: string | null;
+  secondaryLabels?: string[];
   categoryIds?: string[];
   topicIds?: string[];
   subjectIds?: string[];
-  /** tagging_source: manual | rule | ai_suggested | ai_confirmed */
   taggingSource?: TaggingSource | null;
   durationMs?: number;
   aspectRatio?: number | null;
@@ -110,6 +110,8 @@ export async function createVideo(input: CreateVideoInput) {
     throw new Error("Either videoUrl or videoBase64 is required");
   }
 
+  let primaryCategoryId = input.primaryCategoryId;
+  let secondaryLabels = input.secondaryLabels ?? [];
   let categoryIds = input.categoryIds ?? [];
   let topicIds = input.topicIds ?? [];
   let subjectIds = input.subjectIds ?? [];
@@ -120,7 +122,10 @@ export async function createVideo(input: CreateVideoInput) {
       where: { appId_sourceKey: { appId: input.appId, sourceKey: input.ingestSource.trim() } },
     });
     if (rule) {
-      if (categoryIds.length === 0) categoryIds = rule.defaultCategoryIds;
+      if (rule.defaultCategoryIds.length > 0) {
+        primaryCategoryId = primaryCategoryId || rule.defaultCategoryIds[0];
+        if (categoryIds.length === 0) categoryIds = rule.defaultCategoryIds;
+      }
       if (topicIds.length === 0) topicIds = rule.defaultTopicIds;
       if (subjectIds.length === 0) subjectIds = rule.defaultSubjectIds;
       taggingSource = "rule";
@@ -128,13 +133,13 @@ export async function createVideo(input: CreateVideoInput) {
   }
 
   const validation = await validateTaxonomyIds(input.appId, {
-    categoryIds: categoryIds.length ? categoryIds : undefined,
+    categoryIds: primaryCategoryId ? [primaryCategoryId] : undefined,
     topicIds: topicIds.length ? topicIds : undefined,
     subjectIds: subjectIds.length ? subjectIds : undefined,
   });
   if (!validation.valid) {
     const msg = [
-      validation.invalidCategoryIds?.length ? `Invalid category IDs: ${validation.invalidCategoryIds.join(", ")}` : null,
+      validation.invalidCategoryIds?.length ? `Invalid primary category ID: ${validation.invalidCategoryIds.join(", ")}` : null,
       validation.invalidTopicIds?.length ? `Invalid topic IDs: ${validation.invalidTopicIds.join(", ")}` : null,
       validation.invalidSubjectIds?.length ? `Invalid subject IDs: ${validation.invalidSubjectIds.join(", ")}` : null,
     ]
@@ -142,6 +147,8 @@ export async function createVideo(input: CreateVideoInput) {
       .join("; ");
     throw new Error(msg);
   }
+
+  const categoryIdsForVideo = categoryIds.length > 0 ? categoryIds : [primaryCategoryId];
 
   const sourcePath = await writeSourceToTemp(input.videoBase64, input.videoUrl);
 
@@ -152,7 +159,9 @@ export async function createVideo(input: CreateVideoInput) {
       status: "processing",
       title: input.title ?? null,
       description: input.description ?? null,
-      categoryIds,
+      primaryCategoryId,
+      secondaryLabels,
+      categoryIds: categoryIdsForVideo,
       topicIds,
       subjectIds,
       ingestSource: input.ingestSource?.trim() ?? null,
@@ -179,7 +188,7 @@ export async function createVideo(input: CreateVideoInput) {
     where: { id: video.id },
     include: { assets: true, primaryAsset: true },
   });
-  const [categories, topics, subjects] = await Promise.all([
+  const [categories, topics, subjects, primaryCategory] = await Promise.all([
     created.categoryIds.length
       ? prisma.taxonomyNode.findMany({ where: { id: { in: created.categoryIds } }, select: { id: true, name: true, slug: true } })
       : [],
@@ -189,8 +198,11 @@ export async function createVideo(input: CreateVideoInput) {
     created.subjectIds.length
       ? prisma.taxonomyNode.findMany({ where: { id: { in: created.subjectIds } }, select: { id: true, name: true, slug: true } })
       : [],
+    created.primaryCategoryId
+      ? prisma.taxonomyNode.findUnique({ where: { id: created.primaryCategoryId }, select: { id: true, name: true, slug: true } })
+      : null,
   ]);
-  return { ...created, categories, topics, subjects };
+  return { ...created, categories, topics, subjects, primaryCategory: primaryCategory ?? undefined };
 }
 
 export async function getVideo(appId: string, videoId: string, userId?: string | null) {
@@ -199,7 +211,7 @@ export async function getVideo(appId: string, videoId: string, userId?: string |
     include: { assets: true, primaryAsset: true },
   });
   if (!video) return null;
-  const [categories, topics, subjects, voteFlagsMap] = await Promise.all([
+  const [categories, topics, subjects, primaryCategory, voteFlagsMap] = await Promise.all([
     video.categoryIds.length
       ? prisma.taxonomyNode.findMany({ where: { id: { in: video.categoryIds } }, select: { id: true, name: true, slug: true } })
       : [],
@@ -209,6 +221,9 @@ export async function getVideo(appId: string, videoId: string, userId?: string |
     video.subjectIds.length
       ? prisma.taxonomyNode.findMany({ where: { id: { in: video.subjectIds } }, select: { id: true, name: true, slug: true } })
       : [],
+    video.primaryCategoryId
+      ? prisma.taxonomyNode.findUnique({ where: { id: video.primaryCategoryId }, select: { id: true, name: true, slug: true } })
+      : null,
     userId ? getVoteFlagsByUserForVideos(userId, [videoId]) : Promise.resolve(new Map()),
   ]);
   const flags = voteFlagsMap.get(videoId) ?? { like: false, up_vote: false, super_vote: false };
@@ -217,6 +232,8 @@ export async function getVideo(appId: string, videoId: string, userId?: string |
     categories,
     topics,
     subjects,
+    primaryCategory: primaryCategory ?? undefined,
+    secondaryLabels: video.secondaryLabels ?? [],
     like_by_you: flags.like,
     upvote_by_you: flags.up_vote,
     supervote_by_you: flags.super_vote,
@@ -239,7 +256,7 @@ export async function getMyVideos(
   const hasMore = videos.length > limit;
   const items = hasMore ? videos.slice(0, limit) : videos;
   const nextCursor = hasMore ? items[items.length - 1]?.id : null;
-  const allCategoryIds = [...new Set(items.flatMap((v) => v.categoryIds))];
+  const allCategoryIds = [...new Set(items.flatMap((v) => [...v.categoryIds, v.primaryCategoryId].filter(Boolean) as string[]))];
   const allTopicIds = [...new Set(items.flatMap((v) => v.topicIds))];
   const allSubjectIds = [...new Set(items.flatMap((v) => v.subjectIds))];
   const [categoryNodes, topicNodes, subjectNodes, voteFlagsMap] = await Promise.all([
@@ -253,11 +270,14 @@ export async function getMyVideos(
   const subjectMap = new Map(subjectNodes.map((n) => [n.id, n]));
   const videosWithTaxonomy = items.map((v) => {
     const flags = voteFlagsMap.get(v.id) ?? { like: false, up_vote: false, super_vote: false };
+    const primaryCategory = v.primaryCategoryId ? categoryMap.get(v.primaryCategoryId) : undefined;
     return {
       ...v,
       categories: v.categoryIds.map((id) => categoryMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
       topics: v.topicIds.map((id) => topicMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
       subjects: v.subjectIds.map((id) => subjectMap.get(id)).filter(Boolean) as { id: string; name: string; slug: string | null }[],
+      primaryCategory: primaryCategory ?? undefined,
+      secondaryLabels: v.secondaryLabels ?? [],
       like_by_you: flags.like,
       upvote_by_you: flags.up_vote,
       supervote_by_you: flags.super_vote,
@@ -322,18 +342,24 @@ export async function updateVideo(input: UpdateVideoInput) {
   }
 
   if (
+    input.primaryCategoryId !== undefined ||
     input.categoryIds !== undefined ||
     input.topicIds !== undefined ||
     input.subjectIds !== undefined
   ) {
     const validation = await validateTaxonomyIds(input.appId, {
-      categoryIds: input.categoryIds?.length ? input.categoryIds : undefined,
+      categoryIds:
+        input.primaryCategoryId !== undefined
+          ? [input.primaryCategoryId]
+          : input.categoryIds?.length
+            ? input.categoryIds
+            : undefined,
       topicIds: input.topicIds?.length ? input.topicIds : undefined,
       subjectIds: input.subjectIds?.length ? input.subjectIds : undefined,
     });
     if (!validation.valid) {
       const msg = [
-        validation.invalidCategoryIds?.length ? `Invalid category IDs: ${validation.invalidCategoryIds.join(", ")}` : null,
+        validation.invalidCategoryIds?.length ? `Invalid category/primary category IDs: ${validation.invalidCategoryIds.join(", ")}` : null,
         validation.invalidTopicIds?.length ? `Invalid topic IDs: ${validation.invalidTopicIds.join(", ")}` : null,
         validation.invalidSubjectIds?.length ? `Invalid subject IDs: ${validation.invalidSubjectIds.join(", ")}` : null,
       ]
@@ -346,6 +372,8 @@ export async function updateVideo(input: UpdateVideoInput) {
   const updateData: Parameters<typeof prisma.video.update>[0]["data"] = {
     title: input.title !== undefined ? input.title : undefined,
     description: input.description !== undefined ? input.description : undefined,
+    primaryCategoryId: input.primaryCategoryId !== undefined ? input.primaryCategoryId : undefined,
+    secondaryLabels: input.secondaryLabels !== undefined ? input.secondaryLabels : undefined,
     categoryIds: input.categoryIds !== undefined ? input.categoryIds : undefined,
     topicIds: input.topicIds !== undefined ? input.topicIds : undefined,
     subjectIds: input.subjectIds !== undefined ? input.subjectIds : undefined,
@@ -353,6 +381,9 @@ export async function updateVideo(input: UpdateVideoInput) {
     durationMs: input.durationMs,
     aspectRatio: input.aspectRatio !== undefined ? input.aspectRatio : undefined,
   };
+  if (input.primaryCategoryId !== undefined && input.categoryIds === undefined) {
+    updateData.categoryIds = [input.primaryCategoryId];
+  }
   if (newPrimaryAssetId) updateData.primaryAssetId = newPrimaryAssetId;
   const filtered = Object.fromEntries(
     Object.entries(updateData).filter(([, v]) => v !== undefined)
@@ -367,7 +398,7 @@ export async function updateVideo(input: UpdateVideoInput) {
     where: { id: video.id },
     include: { assets: true, primaryAsset: true },
   });
-  const [categories, topics, subjects] = await Promise.all([
+  const [categories, topics, subjects, primaryCategory] = await Promise.all([
     updated.categoryIds.length
       ? prisma.taxonomyNode.findMany({ where: { id: { in: updated.categoryIds } }, select: { id: true, name: true, slug: true } })
       : [],
@@ -377,8 +408,11 @@ export async function updateVideo(input: UpdateVideoInput) {
     updated.subjectIds.length
       ? prisma.taxonomyNode.findMany({ where: { id: { in: updated.subjectIds } }, select: { id: true, name: true, slug: true } })
       : [],
+    updated.primaryCategoryId
+      ? prisma.taxonomyNode.findUnique({ where: { id: updated.primaryCategoryId }, select: { id: true, name: true, slug: true } })
+      : null,
   ]);
-  return { ...updated, categories, topics, subjects };
+  return { ...updated, categories, topics, subjects, primaryCategory: primaryCategory ?? undefined };
 }
 
 export interface BulkTagInput {

@@ -93,6 +93,10 @@ model Video {
   status         String        @default("ready")
   title          String?
   description    String?
+  /** Required: exactly one primary category (powers "Same Category" + feed). */
+  primaryCategoryId String?   @map("primary_category_id") @db.Uuid
+  /** Optional: secondary labels e.g. Weather, Fashion (mapped to primary for display). */
+  secondaryLabels   String[]   @default([]) @map("secondary_labels")
   categoryIds    String[]      @default([]) @map("category_ids")
   topicIds       String[]      @default([]) @map("topic_ids")
   subjectIds     String[]      @default([]) @map("subject_ids")

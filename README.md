@@ -64,7 +64,7 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
   - `GET /api/users` — list users in this app
   - `GET /api/users/:id` — user profile in this app (404 if user has no profile in this app)
 - **Feed** (app-scoped video feed; app via `app_id` query, `X-App-Id` header, or JWT)
-  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=` (single or multiple IDs: comma-separated or repeated), `?topic_id=`, `?subject_id=`, `?limit=`, `?cursor=`. Returns `{ items, nextCursor, hasMore }` with each item: `id`, `guid`, `title`, `url`, `mp4Url`, `thumbnailUrl`, `thumbnailUrls`, `durationMs`, `categories`, `topics`, `subjects` (arrays), vote counts, etc.
+  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=` (primary category UUID(s): “Same Category” filter), `?topic_id=`, `?subject_id=`, `?limit=`, `?cursor=`. Returns `{ items, nextCursor, hasMore }` with each item: `id`, `guid`, `title`, `url`, `mp4Url`, `thumbnailUrl`, `thumbnailUrls`, `durationMs`, `primaryCategory` (single `{ id, name, slug }`), `secondaryLabels` (string[]), `categories`, `topics`, `subjects`, vote counts, `like_by_you`, `upvote_by_you`, `supervote_by_you`.
 - **Categories** (app-scoped; app via `app_id`, `X-App-Id`, or JWT)
   - `GET /api/categories` — list taxonomy categories for the app. Returns `{ categories: [{ id, name, slug }] }`.
 - **Taxonomy** (controlled vocabulary; app via `app_id`, `X-App-Id`, or JWT)
@@ -74,11 +74,27 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
   - `POST /api/ingest-default-rules` — create/update rule. Body: `sourceKey`, optional `defaultCategoryIds`, `defaultTopicIds`, `defaultSubjectIds`.
   - `DELETE /api/ingest-default-rules/:ruleId` — delete rule.
 - **Video create/get/update** (require `Authorization: Bearer <token>`)
-  - `POST /api/videos` — create video. Body: `durationMs` (required), optional `title`, `description`, `categoryIds`, `topicIds`, `subjectIds` (arrays of UUIDs from taxonomy), `ingestSource` (key for rule-based defaults), `aspectRatio`, and either `videoUrl` or `videoBase64`. Tags are validated against app taxonomy. `tagging_source` is set to `manual` or `rule` when defaults apply. The source MP4 is uploaded to R2 immediately and the video is set to **`status: "ready"`** so it appears in the feed right away (playable as MP4). In the background, the job transcodes to HLS (9:16, 1920p) and generates thumbnails at 5s, 15s, 30s; when done, the feed URL switches to the HLS manifest (MP4 asset is kept). **Requires FFmpeg** (ffmpeg-static or on PATH) and Cloudflare R2 env vars.
-  - `GET /api/videos` — list videos you posted (same app as token). Query: `?limit=`, `?cursor=`. Returns `{ videos, nextCursor, hasMore }`.
-  - `GET /api/videos/:videoId` — fetch a single video (same app as token). Use the `id` from the create response to poll until `status` is `"ready"`.
-  - `PATCH /api/videos/:videoId` — update video metadata and/or upload new primary/thumbnail (same app, creator only). Optional `taggingSource`: `manual` | `rule` | `ai_suggested` | `ai_confirmed`.
+  - `POST /api/videos` — create video. **Required:** `durationMs`, `primaryCategoryId` (single category UUID from taxonomy; powers “Same Category” and feed), and either `videoUrl` or `videoBase64`. **Optional:** `title`, `description`, `secondaryLabels` (e.g. `["Weather", "Fashion"]`), `ingestSource`, `aspectRatio`, `thumbnailBase64`; `topicIds`/`subjectIds` are optional (for future derivation; MRSS typically omits them). Tags are validated against app taxonomy. The source MP4 is uploaded to R2 immediately and the video is set to **`status: "ready"`** so it appears in the feed (playable as MP4). In the background, the job transcodes to HLS and generates thumbnails. **Requires FFmpeg** and Cloudflare R2 env vars.
+  - `GET /api/videos` — list videos you posted (same app as token). Query: `?limit=`, `?cursor=`. Returns `{ videos, nextCursor, hasMore }` with `primaryCategory`, `secondaryLabels` per video.
+  - `GET /api/videos/:videoId` — fetch a single video (same app as token). Use the `id` from the create response to poll until `status` is `"ready"`. Response includes `primaryCategory`, `secondaryLabels`.
+  - `PATCH /api/videos/:videoId` — update video metadata and/or upload new primary/thumbnail (same app, creator only). Optional: `primaryCategoryId`, `secondaryLabels`, `taggingSource` (`manual` | `rule` | `ai_suggested` | `ai_confirmed`).
   - `POST /api/videos/bulk-tag` — bulk update tags. Body: `videoIds` (required), optional `categoryIds`, `topicIds`, `subjectIds`, `taggingSource`. For admin/ingestion UI.
+
+**Upload (create) video payload example**
+
+```json
+{
+  "durationMs": 60000,
+  "primaryCategoryId": "uuid-from-GET-api-taxonomy-kind-category",
+  "secondaryLabels": ["Weather", "Crypto"],
+  "title": "Market update",
+  "videoUrl": "https://example.com/video.mp4"
+}
+```
+
+- **Required:** `durationMs`, `primaryCategoryId` (one category UUID), and either `videoUrl` or `videoBase64`.
+- **Optional:** `title`, `description`, `secondaryLabels` (string[]), `ingestSource`, `aspectRatio`, `thumbnailBase64`. Omit `topicIds`/`subjectIds` for MRSS; they can be derived later.
+
 - **Video interactions** (like, up_vote, super_vote; require `Authorization: Bearer <token>`)
   - `POST /api/videos/:videoId/vote` — body: `{ "voteType": "like" | "up_vote" | "super_vote", "gestureSource?", "requestId?", "rankPosition?", "feedMode?" }`. Records vote and increments video counts. Returns `{ vote, counts }`.
 - **Events** (M2 event logging; app-scoped via `app_id` in body/header or JWT)
