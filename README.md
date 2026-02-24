@@ -64,7 +64,7 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
   - `GET /api/users` — list users in this app
   - `GET /api/users/:id` — user profile in this app (404 if user has no profile in this app)
 - **Feed** (app-scoped video feed; app via `app_id` query, `X-App-Id` header, or JWT)
-  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=` (primary category UUID(s): “Same Category” filter), `?topic_id=`, `?subject_id=`, `?limit=`, `?cursor=`. Returns `{ items, nextCursor, hasMore }` with each item: `id`, `guid`, `title`, `url`, `mp4Url`, `thumbnailUrl`, `thumbnailUrls`, `durationMs`, `primaryCategory` (single `{ id, name, slug }`), `secondaryLabels` (string[]), `categories`, `topics`, `subjects`, vote counts, `like_by_you`, `upvote_by_you`, `supervote_by_you`.
+  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=` (primary category UUID(s): “Same Category” filter), `?topic_id=`, `?subject_id=`, `?limit=`, `?cursor=`. Returns `{ request_id, items, nextCursor, hasMore }`; each item includes `rank_position` (0-based). Optional query `?request_id=` for event correlation (if omitted, backend generates one). Use `request_id` and `rank_position` when posting events. Full item shape: `id`, `guid`, `title`, `url`, `mp4Url`, `thumbnailUrl`, `thumbnailUrls`, `durationMs`, `primaryCategory` (single `{ id, name, slug }`), `secondaryLabels` (string[]), `categories`, `topics`, `subjects`, vote counts, `like_by_you`, `upvote_by_you`, `supervote_by_you`.
 - **Categories** (app-scoped; app via `app_id`, `X-App-Id`, or JWT)
   - `GET /api/categories` — list taxonomy categories for the app. Returns `{ categories: [{ id, name, slug }] }`.
 - **Taxonomy** (controlled vocabulary; app via `app_id`, `X-App-Id`, or JWT)
@@ -98,9 +98,9 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
 - **Video interactions** (like, up_vote, super_vote; require `Authorization: Bearer <token>`)
   - `POST /api/videos/:videoId/vote` — body: `{ "voteType": "like" | "up_vote" | "super_vote", "gestureSource?", "requestId?", "rankPosition?", "feedMode?" }`. Records vote and increments video counts. Returns `{ vote, counts }`.
 - **Events** (M2 event logging; app-scoped via `app_id` in body/header or JWT)
-  - `POST /events` — store event. Body: `type`, `event`, optional `request_id`, `rank_position`, `feed_mode`, `item_id`, `direction_key`, `gesture_action`, `gesture_source`, `ts`, … App: `app_id` in body or `X-App-Id` header (or JWT). Returns `{ ok: true, id }`.
+  - `POST /events` — store event. Body: `type`, `event`, optional `schema_version` (integer; default 1), optional `request_id`, `rank_position`, `feed_mode`, `item_id`, `direction_key`, `gesture_action`, `gesture_source`, `ts`, … App: `app_id` in body or `X-App-Id` header (or JWT). Returns `{ ok: true, id }`. See [docs/EVENT-SCHEMA-VERSIONING.md](docs/EVENT-SCHEMA-VERSIONING.md).
   - **Gesture direction_key → gesture_action (all supported):** up→Next, down→Previous, left→Back, right→Same topic, upLeft→Restart, upRight→Same category, downLeft→Inform, downRight→Same subject.
-  - `GET /events` — query. Params: `?type=`, `?event=`, `?request_id=`, `?item_id=`, `?gesture_direction=`, `?limit=`. App: `app_id` query, `X-App-Id` header, or JWT. Returns `{ events: [...] }`.
+  - `GET /events` — query. Params: `?type=`, `?event=`, `?request_id=`, `?item_id=`, `?gesture_direction=`, `?schema_version=`, `?limit=`. App: `app_id` query, `X-App-Id` header, or JWT. Returns `{ events: [...] }` (each event includes `schema_version`, `request_id`, `rank_position` when stored).
 
 ## Client configuration (EVENT_API_BASE)
 

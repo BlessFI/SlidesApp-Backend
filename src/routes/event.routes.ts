@@ -10,10 +10,11 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import * as eventService from "../services/event.service.js";
 import { getAppById } from "../services/app.service.js";
-/** Client payload: type, event, request_id, rank_position, feed_mode, item_id, direction_key, gesture_action, gesture_source, ts, ... */
+/** Client payload: type, event, optional schema_version, request_id, rank_position, feed_mode, item_id, direction_key, gesture_action, gesture_source, ts, ... */
 interface EventBody {
   type: string;
   event: string;
+  schema_version?: number;
   request_id?: string;
   rank_position?: number;
   feed_mode?: string;
@@ -96,7 +97,7 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         feedMode: feedMode ?? undefined,
         eventType: body.type,
         eventName: body.event,
-        schemaVersion: 1,
+        schemaVersion: typeof body.schema_version === "number" ? body.schema_version : 1,
         gestureDirection: body.direction_key ?? undefined,
         gestureSource: body.gesture_source ?? undefined,
         properties: {
@@ -108,6 +109,7 @@ export default async function eventRoutes(fastify: FastifyInstance) {
                 ![
                   "type",
                   "event",
+                  "schema_version",
                   "request_id",
                   "rank_position",
                   "feed_mode",
@@ -159,6 +161,7 @@ export default async function eventRoutes(fastify: FastifyInstance) {
       }
 
       const limit = str(q.limit) ? Math.min(500, parseInt(str(q.limit)!, 10) || 100) : 100;
+      const schemaVersion = str(q.schema_version) ? parseInt(str(q.schema_version)!, 10) : undefined;
       const events = await eventService.listEvents({
         appId,
         type: str(q.type),
@@ -166,6 +169,7 @@ export default async function eventRoutes(fastify: FastifyInstance) {
         request_id: str(q.request_id),
         item_id: str(q.item_id),
         gesture_direction: str(q.gesture_direction),
+        schema_version: Number.isInteger(schemaVersion) ? schemaVersion : undefined,
         limit,
       });
 

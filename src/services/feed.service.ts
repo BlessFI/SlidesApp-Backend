@@ -10,6 +10,8 @@ export interface FeedQuery {
   subjectIds?: string[];
   limit?: number;
   cursor?: string;
+  /** Feed session id for event correlation; if omitted, backend generates one and returns it */
+  requestId?: string | null;
 }
 
 export async function getFeedForApp(query: FeedQuery) {
@@ -59,7 +61,9 @@ export async function getFeedForApp(query: FeedQuery) {
   const topicMap = new Map(topicNodes.map((n) => [n.id, n]));
   const subjectMap = new Map(subjectNodes.map((n) => [n.id, n]));
 
-  const feed = items.map((v) => {
+  const requestId = query.requestId ?? `req_${crypto.randomUUID()}`;
+
+  const feed = items.map((v, index) => {
     const assets = v.assets ?? [];
     const thumbnails = assets
       .filter((a) => a.assetType === "thumbnail" && a.variantLabel)
@@ -96,9 +100,10 @@ export async function getFeedForApp(query: FeedQuery) {
       like_by_you: Boolean(flags.like),
       upvote_by_you: Boolean(flags.up_vote),
       supervote_by_you: Boolean(flags.super_vote),
+      rank_position: index,
     };
     return item;
   });
 
-  return { items: feed, nextCursor, hasMore };
+  return { request_id: requestId, items: feed, nextCursor, hasMore };
 }

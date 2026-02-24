@@ -32,6 +32,7 @@ export default async function feedRoutes(fastify: FastifyInstance) {
       };
       const limit = str(q.limit) ? Math.min(100, parseInt(str(q.limit)!, 10) || 50) : 50;
       const userId = await getOptionalUserIdFromRequest(request);
+      const requestId = str(q.request_id) ?? undefined;
 
       const result = await feedService.getFeedForApp({
         appId,
@@ -41,6 +42,7 @@ export default async function feedRoutes(fastify: FastifyInstance) {
         subjectIds: toIds(q.subject_id),
         limit,
         cursor: str(q.cursor) ?? undefined,
+        requestId: requestId ?? undefined,
       });
 
       return reply.send(result);

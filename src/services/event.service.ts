@@ -41,6 +41,7 @@ export interface ListEventsQuery {
   request_id?: string;
   item_id?: string;
   gesture_direction?: string;
+  schema_version?: number;
   limit?: number;
 }
 
@@ -54,6 +55,7 @@ export async function listEvents(query: ListEventsQuery) {
   if (query.request_id) where.requestId = query.request_id;
   if (query.item_id) where.videoId = query.item_id;
   if (query.gesture_direction) where.gestureDirection = query.gesture_direction;
+  if (query.schema_version != null) where.schemaVersion = query.schema_version;
 
   const events = await prisma.event.findMany({
     where,
@@ -66,6 +68,7 @@ export async function listEvents(query: ListEventsQuery) {
     ts: e.createdAt.toISOString(),
     type: e.eventType,
     event: e.eventName,
+    schema_version: e.schemaVersion,
     request_id: e.requestId,
     rank_position: e.rankPosition,
     feed_mode: e.feedMode,

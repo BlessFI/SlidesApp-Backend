@@ -127,8 +127,11 @@ Optional in body:
 
 ### Feed — `GET /api/feed`
 
+- **Query:** `?request_id=` (optional) — feed session id for event correlation. If omitted, the backend generates one and returns it in the response.
 - **Query:** `category_id` = primary category UUID(s). Comma-separated or repeated. This is the **“Same Category”** filter (by `primary_category_id`).
+- **Response:** `{ request_id, items, nextCursor, hasMore }`. Use `request_id` when posting events (e.g. gesture, vote) so events can be tied to this feed session.
 - **Response items:** Each item includes:
+  - `rank_position`: number (0-based index in this feed response). Send this with events when the user interacts with this item.
   - `primaryCategory`: `{ id, name, slug } | null`
   - `secondaryLabels`: `string[]`
   - Plus existing fields: `categories`, `topics`, `subjects`, vote counts, `like_by_you`, `upvote_by_you`, `supervote_by_you`, etc.
@@ -165,10 +168,19 @@ Each video in `videos` has:
 // From API: GET /api/categories
 type Category = { id: string; name: string; slug: string | null };
 
+// Feed response
+type FeedResponse = {
+  request_id: string;
+  items: VideoItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+
 // Feed / video item
 type VideoItem = {
   id: string;
   guid: string;
+  rank_position: number;  // 0-based index in this feed response (use with request_id for events)
   title: string | null;
   description: string | null;
   durationMs: number;
@@ -201,5 +213,34 @@ type CreateVideoBody = {
 
 - **Same Category** (e.g. upRight): backend filters by `primary_category_id`. Use `GET /api/feed?category_id=<primaryCategory.id>` (and `app_id` as usual).
 - **Same Subject / Same Topic:** When backend has derived subject/topic, it will use them; otherwise it may fall back to semantic similarity. Frontend can keep using `subject_id` / `topic_id` query params when available.
+
+---
+
+## 7. M2: request_id and rank_position (feed + events)
+
+For analytics and session correlation, the feed returns a **request_id** and each item has **rank_position**. Events store these when you send them.
+
+### Feed
+
+- **Request:** Optional `?request_id=` — if the client sends a feed session id (e.g. from a previous response), it is echoed back. If omitted, the backend generates one (e.g. `req_<uuid>`) and returns it.
+- **Response:** `{ request_id, items, nextCursor, hasMore }`. Each **item** has:
+  - `rank_position`: number (0-based index in this page of the feed).
+
+When the user performs an action (gesture, vote, etc.), send the same `request_id` and that item’s `rank_position` so the event can be tied to this feed session and position.
+
+### Events — `POST /events`
+
+Body can include:
+
+- `request_id` — string (from feed response).
+- `rank_position` — number (from the feed item the user interacted with).
+
+Both are stored on the event and returned in `GET /events` as `request_id` and `rank_position`. Use them for session funnels and ranking analytics.
+
+### Example flow
+
+1. `GET /api/feed?app_id=...` → `{ request_id: "req_abc123", items: [{ id: "...", rank_position: 0 }, { id: "...", rank_position: 1 }], ... }`
+2. User swipes or votes on the first video (rank_position 0).
+3. `POST /events` with `{ type: "...", event: "...", request_id: "req_abc123", rank_position: 0, item_id: "<videoId>", ... }`
 
 If you need the same doc in another format (e.g. OpenAPI snippet or Postman) we can add it.
