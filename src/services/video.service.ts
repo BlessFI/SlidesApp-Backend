@@ -349,7 +349,7 @@ export async function updateVideo(input: UpdateVideoInput) {
   ) {
     const validation = await validateTaxonomyIds(input.appId, {
       categoryIds:
-        input.primaryCategoryId !== undefined
+        input.primaryCategoryId != null && input.primaryCategoryId !== ""
           ? [input.primaryCategoryId]
           : input.categoryIds?.length
             ? input.categoryIds
@@ -381,7 +381,7 @@ export async function updateVideo(input: UpdateVideoInput) {
     durationMs: input.durationMs,
     aspectRatio: input.aspectRatio !== undefined ? input.aspectRatio : undefined,
   };
-  if (input.primaryCategoryId !== undefined && input.categoryIds === undefined) {
+  if (input.primaryCategoryId != null && input.primaryCategoryId !== "" && input.categoryIds === undefined) {
     updateData.categoryIds = [input.primaryCategoryId];
   }
   if (newPrimaryAssetId) updateData.primaryAssetId = newPrimaryAssetId;

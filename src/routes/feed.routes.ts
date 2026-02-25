@@ -1,6 +1,7 @@
 /**
  * Feed API: fetch video feed for an app (by app_id).
  * GET /api/feed — list ready videos, optionally by category_id, topic_id, subject_id. App via query, X-App-Id, or JWT.
+ * Response includes request_id (feed session id) and each item has rank_position (0-based).
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
@@ -8,9 +9,25 @@ import * as feedService from "../services/feed.service.js";
 import { getAppById } from "../services/app.service.js";
 import { getAppIdFromRequest, getOptionalUserIdFromRequest } from "../lib/appFromRequest.js";
 
+const feedResponseSchema = {
+  response: {
+    200: {
+      type: "object",
+      required: ["request_id", "items", "nextCursor", "hasMore"],
+      properties: {
+        request_id: { type: "string", description: "Feed session id for event correlation" },
+        items: { type: "array", items: { type: "object" } },
+        nextCursor: { type: ["string", "null"] },
+        hasMore: { type: "boolean" },
+      },
+    },
+  },
+};
+
 export default async function feedRoutes(fastify: FastifyInstance) {
   fastify.get(
     "/",
+    { schema: feedResponseSchema },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const appId = await getAppIdFromRequest(request);
       if (!appId) {
