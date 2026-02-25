@@ -17,38 +17,52 @@ export interface FeedQuery {
 
 export async function getFeedForApp(query: FeedQuery) {
   const limit = Math.min(Math.max(1, query.limit ?? 50), 100);
+  const hasFilters = !!(query.categoryIds?.length || query.topicIds?.length || query.subjectIds?.length);
 
-  // Base constraints: app + ready status (always applied)
-  let where: Prisma.VideoWhereInput = {
-    appId: query.appId,
-    status: "ready",
-    ...(query.topicIds?.length ? { topicIds: { hasSome: query.topicIds } } : {}),
-    ...(query.subjectIds?.length ? { subjectIds: { hasSome: query.subjectIds } } : {}),
-  };
-
-  // Category filter: match either primary_category_id OR legacy category_ids for robustness
-  if (query.categoryIds?.length) {
-    where = {
-      ...where,
-      OR: [
-        { primaryCategoryId: { in: query.categoryIds } },
-        { categoryIds: { hasSome: query.categoryIds } },
-      ],
+  function buildWhere(includeFilters: boolean): Prisma.VideoWhereInput {
+    const base: Prisma.VideoWhereInput = { appId: query.appId, status: "ready" };
+    if (!includeFilters) return base;
+    const withTopicSubject: Prisma.VideoWhereInput = {
+      ...base,
+      ...(query.topicIds?.length ? { topicIds: { hasSome: query.topicIds } } : {}),
+      ...(query.subjectIds?.length ? { subjectIds: { hasSome: query.subjectIds } } : {}),
     };
+    if (query.categoryIds?.length) {
+      return {
+        ...withTopicSubject,
+        OR: [
+          { primaryCategoryId: { in: query.categoryIds } },
+          { categoryIds: { hasSome: query.categoryIds } },
+        ],
+      };
+    }
+    return withTopicSubject;
   }
 
-  const videos = await prisma.video.findMany({
-    where,
+  let videos = await prisma.video.findMany({
+    where: buildWhere(true),
     take: limit + 1,
     cursor: query.cursor ? { id: query.cursor } : undefined,
     orderBy: [{ rankingScore: "desc" }, { createdAt: "desc" }],
     include: {
       primaryAsset: true,
-      assets: {
-        select: { assetType: true, variantLabel: true, cdnUrl: true },
-      },
+      assets: { select: { assetType: true, variantLabel: true, cdnUrl: true } },
     },
   });
+
+  // Fallback: if any filter was applied and we got no matches, return general feed (no filters)
+  if (hasFilters && videos.length === 0) {
+    videos = await prisma.video.findMany({
+      where: buildWhere(false),
+      take: limit + 1,
+      cursor: query.cursor ? { id: query.cursor } : undefined,
+      orderBy: [{ rankingScore: "desc" }, { createdAt: "desc" }],
+      include: {
+        primaryAsset: true,
+        assets: { select: { assetType: true, variantLabel: true, cdnUrl: true } },
+      },
+    });
+  }
 
   const hasMore = videos.length > limit;
   const items = hasMore ? videos.slice(0, limit) : videos;
