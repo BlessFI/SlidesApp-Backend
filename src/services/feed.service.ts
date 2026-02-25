@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import type { Prisma } from "@prisma/client";
 import { getVoteFlagsByUserForVideos } from "./vote.service.js";
 
 export interface FeedQuery {
@@ -16,13 +17,25 @@ export interface FeedQuery {
 
 export async function getFeedForApp(query: FeedQuery) {
   const limit = Math.min(Math.max(1, query.limit ?? 50), 100);
-  const where = {
+
+  // Base constraints: app + ready status (always applied)
+  let where: Prisma.VideoWhereInput = {
     appId: query.appId,
-    status: "ready" as const,
-    ...(query.categoryIds?.length ? { primaryCategoryId: { in: query.categoryIds } } : {}),
+    status: "ready",
     ...(query.topicIds?.length ? { topicIds: { hasSome: query.topicIds } } : {}),
     ...(query.subjectIds?.length ? { subjectIds: { hasSome: query.subjectIds } } : {}),
   };
+
+  // Category filter: match either primary_category_id OR legacy category_ids for robustness
+  if (query.categoryIds?.length) {
+    where = {
+      ...where,
+      OR: [
+        { primaryCategoryId: { in: query.categoryIds } },
+        { categoryIds: { hasSome: query.categoryIds } },
+      ],
+    };
+  }
 
   const videos = await prisma.video.findMany({
     where,
