@@ -27,7 +27,7 @@ const feedResponseSchema = {
 export default async function feedRoutes(fastify: FastifyInstance) {
   fastify.get(
     "/",
-    { schema: feedResponseSchema },
+    // { schema: feedResponseSchema },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const appId = await getAppIdFromRequest(request);
       if (!appId) {
