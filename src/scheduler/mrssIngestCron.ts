@@ -1,6 +1,7 @@
 /**
  * Hourly MRSS ingest cron. Runs in the same process as the server.
- * Enable with MRSS_INGEST_ENABLED=1 and set MRSS_INGEST_APP_ID (and optional MRSS_INGEST_SOURCE_KEY).
+ * Enable with MRSS_INGEST_ENABLED=1. Uses same default app/source as scripts/run-mrss-ingest.ts
+ * when MRSS_INGEST_APP_ID / MRSS_INGEST_SOURCE_KEY are not set.
  * Uses a lock so overlapping runs are skipped (one batch must finish before the next is scheduled).
  */
 
@@ -9,6 +10,10 @@ import { runMrssIngestForProvider } from "../services/mrss.service.js";
 
 const CRON_SCHEDULE = "0 * * * *"; // every hour at minute 0
 const MAX_ITEMS_PER_RUN = 10;
+
+/** Same defaults as scripts/run-mrss-ingest.ts */
+const DEFAULT_APP_ID = "cmlqd4ag90000s1hi78ws4s8h";
+const DEFAULT_SOURCE_KEY = "videoelephant";
 
 let isRunning = false;
 
@@ -19,9 +24,8 @@ function isCronEnabled(): boolean {
 
 function getCronConfig(): { appId: string; sourceKey: string } | null {
   if (!isCronEnabled()) return null;
-  const appId = process.env.MRSS_INGEST_APP_ID?.trim();
-  if (!appId) return null;
-  const sourceKey = process.env.MRSS_INGEST_SOURCE_KEY?.trim() || "videoelephant";
+  const appId = process.env.MRSS_INGEST_APP_ID?.trim() || DEFAULT_APP_ID;
+  const sourceKey = process.env.MRSS_INGEST_SOURCE_KEY?.trim() || DEFAULT_SOURCE_KEY;
   return { appId, sourceKey };
 }
 
