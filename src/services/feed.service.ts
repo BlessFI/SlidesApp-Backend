@@ -112,6 +112,7 @@ export async function getFeedForApp(query: FeedQuery) {
       durationMs: v.durationMs,
       primaryCategory: primaryCategory ?? null,
       secondaryLabels: v.secondaryLabels ?? [],
+      ingestSource: v.ingestSource ?? null,
       aspectRatio: v.aspectRatio != null ? Number(v.aspectRatio) : null,
       url: v.primaryAsset?.cdnUrl ?? null,
       mp4Url: mp4Asset?.cdnUrl ?? null,

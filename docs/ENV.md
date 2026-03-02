@@ -42,6 +42,32 @@ Video upload/processing works without these; with them you get R2 storage and ba
 
 ---
 
+## Optional (MRSS / Content Provider ingestion)
+
+Used by MRSS ingest jobs (e.g. VideoElephant) to authenticate when fetching the feed. See README § MRSS and Content Provider feeds.
+
+| Variable                         | Description                    | Notes |
+|----------------------------------|--------------------------------|--------|
+| `MRSS_VIDEOELEPHANT_USERNAME`    | VideoElephant MRSS username    | Basic auth; do not commit. |
+| `MRSS_VIDEOELEPHANT_PASSWORD`   | VideoElephant MRSS password    | Basic auth; do not commit. |
+
+---
+
+## Optional (hourly MRSS ingest cron)
+
+When the server starts, it can run MRSS ingest **every hour** in the background (10 new videos per run, one-at-a-time until ready). Enable with:
+
+| Variable                 | Description                          | Notes |
+|--------------------------|--------------------------------------|--------|
+| `MRSS_INGEST_ENABLED`    | `1`, `true`, or `yes`                | Enables the hourly cron. Omit or leave empty to disable. |
+| `MRSS_INGEST_APP_ID`     | App UUID to ingest into              | Required if cron is enabled. |
+| `MRSS_INGEST_SOURCE_KEY` | Content provider source key          | Default: `videoelephant`. |
+
+- Ensure the app already has the content provider and ingest rule (e.g. run `npm run ingest:mrss` once or create via API). Cron only runs `runMrssIngestForProvider`; it does not create the provider.
+- Each run processes up to 10 new items and waits for each video to finish processing before moving to the next so none are left in "processing".
+
+---
+
 ## By environment
 
 ### Local

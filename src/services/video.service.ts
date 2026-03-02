@@ -31,6 +31,10 @@ export interface CreateVideoInput {
   subjectIds?: string[];
   /** Ingest source key for deterministic defaults (e.g. "partner_x" → default primary category). */
   ingestSource?: string | null;
+  /** Optional: external id (e.g. MRSS item guid) for deduplication. */
+  guid?: string | null;
+  /** When true and processing runs in-process (no Redis), wait until transcode finishes before returning. Used for sequential ingest. */
+  waitUntilProcessed?: boolean;
   durationMs: number;
   aspectRatio?: number | null;
   videoUrl?: string | null;
@@ -103,6 +107,34 @@ async function writeSourceToTemp(
   throw new Error("Either videoUrl or videoBase64 is required");
 }
 
+/**
+ * Reprocess a video that is stuck in "processing" or "failed". Uses video.link as source URL.
+ * Returns true if reprocess was started, false if video not found or not eligible (no link).
+ * When enqueued, the worker deletes the temp file; when run in-process, we delete it here.
+ */
+export async function reprocessVideo(videoId: string): Promise<boolean> {
+  const video = await prisma.video.findUnique({
+    where: { id: videoId },
+    select: { id: true, appId: true, status: true, link: true },
+  });
+  if (!video || !video.link?.trim()) return false;
+  if (video.status !== "processing" && video.status !== "failed") return false;
+  await prisma.video.update({
+    where: { id: videoId },
+    data: { status: "processing" },
+  });
+  const sourcePath = await writeSourceToTemp(undefined, video.link);
+  const enqueued = await enqueueProcessVideo(video.id, video.appId, sourcePath);
+  if (!enqueued) {
+    try {
+      await processVideo({ videoId: video.id, appId: video.appId, sourcePath });
+    } finally {
+      await fs.rm(path.dirname(sourcePath), { recursive: true, force: true }).catch(() => {});
+    }
+  }
+  return true;
+}
+
 export async function createVideo(input: CreateVideoInput) {
   const hasUpload = isBase64Upload(input.videoBase64 ?? "");
   const hasUrl = !!input.videoUrl?.trim();
@@ -166,22 +198,30 @@ export async function createVideo(input: CreateVideoInput) {
       subjectIds,
       ingestSource: input.ingestSource?.trim() ?? null,
       taggingSource,
+      guid: input.guid?.trim() ?? null,
+      link: input.videoUrl?.trim() ?? null,
       durationMs: input.durationMs,
       aspectRatio: null,
       primaryAssetId: null,
     },
   });
 
-  // MP4 upload + HLS run in the worker; API returns immediately
   const enqueued = await enqueueProcessVideo(video.id, input.appId, sourcePath);
   if (!enqueued) {
-    processVideo({ videoId: video.id, appId: input.appId, sourcePath })
-      .catch((err) => {
+    const run = async () => {
+      try {
+        await processVideo({ videoId: video.id, appId: input.appId, sourcePath });
+      } catch (err) {
         console.error("processVideo failed", video.id, err);
-      })
-      .finally(() => {
-        fs.rm(path.dirname(sourcePath), { recursive: true, force: true }).catch(() => {});
-      });
+      } finally {
+        await fs.rm(path.dirname(sourcePath), { recursive: true, force: true }).catch(() => {});
+      }
+    };
+    if (input.waitUntilProcessed) {
+      await run();
+    } else {
+      run().catch(() => {});
+    }
   }
 
   const created = await prisma.video.findUniqueOrThrow({

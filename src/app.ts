@@ -8,6 +8,8 @@ import feedRoutes from "./routes/feed.routes.js";
 import categoriesRoutes from "./routes/categories.routes.js";
 import taxonomyRoutes from "./routes/taxonomy.routes.js";
 import ingestDefaultRulesRoutes from "./routes/ingestDefaultRules.routes.js";
+import ingestRoutes from "./routes/ingest.routes.js";
+import contentProvidersRoutes from "./routes/contentProviders.routes.js";
 import videoRoutes from "./routes/video.routes.js";
 import voteRoutes from "./routes/vote.routes.js";
 
@@ -27,6 +29,8 @@ export async function buildApp(opts?: { logger?: boolean }) {
   await fastify.register(categoriesRoutes, { prefix: "/api/categories" });
   await fastify.register(taxonomyRoutes, { prefix: "/api/taxonomy" });
   await fastify.register(ingestDefaultRulesRoutes, { prefix: "/api/ingest-default-rules" });
+  await fastify.register(ingestRoutes, { prefix: "/api/admin/ingest" });
+  await fastify.register(contentProvidersRoutes, { prefix: "/api/content-providers" });
   await fastify.register(videoRoutes, { prefix: "/api/videos" });
   await fastify.register(voteRoutes, { prefix: "/api/videos" });
   await fastify.register(eventRoutes, { prefix: "/events" });

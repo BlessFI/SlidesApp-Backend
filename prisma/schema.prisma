@@ -8,18 +8,19 @@ datasource db {
 }
 
 model User {
-  id        String           @id @default(cuid())
-  email     String           @unique
-  password  String
-  name      String?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  events    Event[]
-  purchases Purchase[]
-  reports   Report[]
-  profiles  UserAppProfile[]
-  videos    Video[]          @relation("VideoCreator")
-  votes     Vote[]
+  id                 String             @id @default(cuid())
+  email              String             @unique
+  password           String
+  name               String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  contentProviders   ContentProvider[]
+  events             Event[]
+  purchases          Purchase[]
+  reports            Report[]
+  profiles           UserAppProfile[]
+  videos             Video[]            @relation("VideoCreator")
+  votes              Vote[]
 }
 
 model App {
@@ -28,6 +29,7 @@ model App {
   slug                String               @unique
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  contentProviders    ContentProvider[]
   events              Event[]
   purchases           Purchase[]
   reports             Report[]
@@ -37,6 +39,26 @@ model App {
   videoAssets         VideoAsset[]
   videos              Video[]
   votes               Vote[]
+}
+
+/// MRSS / Content Provider: one "account" per provider per app (M3). Auth (e.g. Basic) from env per sourceKey.
+model ContentProvider {
+  id                        String   @id @default(uuid()) @db.Uuid
+  appId                     String   @map("app_id")
+  sourceKey                 String   @map("source_key")
+  name                      String?
+  mrssUrl                   String   @map("mrss_url")
+  defaultPrimaryCategoryId  String?  @map("default_primary_category_id") @db.Uuid
+  ingestUserId              String   @map("ingest_user_id")
+  isActive                  Boolean  @default(true) @map("is_active")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+  app                       App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  ingestUser                User     @relation(fields: [ingestUserId], references: [id], onDelete: Restrict)
+
+  @@unique([appId, sourceKey])
+  @@index([appId])
+  @@map("content_providers")
 }
 
 model IngestDefaultRule {

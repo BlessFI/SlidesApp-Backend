@@ -96,6 +96,7 @@ export async function processVideo(input: ProcessVideoInput): Promise<void> {
   const hlsDir = path.join(tmpDir, "hls");
   await fs.mkdir(hlsDir, { recursive: true });
 
+  let setReady = false;
   try {
     // 0. Encode to vertical (9:16) MP4 and upload to R2 so video appears in feed right away
     const verticalMp4Path = path.join(tmpDir, "vertical.mp4");
@@ -119,6 +120,7 @@ export async function processVideo(input: ProcessVideoInput): Promise<void> {
       where: { id: videoId },
       data: { status: "ready", primaryAssetId: mp4Asset.id, aspectRatio: ASPECT_RATIO_9_16 },
     });
+    setReady = true;
 
     // 1. Transcode to HLS (9:16, 1080x1920)
     const manifestPath = path.join(hlsDir, "master.m3u8");
@@ -218,7 +220,12 @@ export async function processVideo(input: ProcessVideoInput): Promise<void> {
     // Tagging hook: M2 sets tagging_source to "manual" if null; M3 can run AI suggestion behind flag
     enqueueTaggingAfterVideoReady(videoId, appId).catch(() => {});
   } catch (err) {
-    // Video already has MP4 and status "ready"; don't set "failed" so feed still shows it
+    if (!setReady) {
+      await prisma.video.update({
+        where: { id: videoId },
+        data: { status: "failed" },
+      }).catch(() => {});
+    }
     throw err;
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});

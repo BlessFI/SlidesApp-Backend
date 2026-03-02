@@ -64,7 +64,7 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
   - `GET /api/users` — list users in this app
   - `GET /api/users/:id` — user profile in this app (404 if user has no profile in this app)
 - **Feed** (app-scoped video feed; app via `app_id` query, `X-App-Id` header, or JWT)
-  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=` (primary category UUID(s): “Same Category” filter), `?topic_id=`, `?subject_id=`, `?limit=`, `?cursor=`. Returns `{ request_id, items, nextCursor, hasMore }`; each item includes `rank_position` (0-based). Optional query `?request_id=` for event correlation (if omitted, backend generates one). Use `request_id` and `rank_position` when posting events. Full item shape: `id`, `guid`, `title`, `url`, `mp4Url`, `thumbnailUrl`, `thumbnailUrls`, `durationMs`, `primaryCategory` (single `{ id, name, slug }`), `secondaryLabels` (string[]), `categories`, `topics`, `subjects`, vote counts, `like_by_you`, `upvote_by_you`, `supervote_by_you`.
+  - `GET /api/feed` — list ready videos for the app. Query: `?app_id=`, `?category_id=` (primary category UUID(s): “Same Category” filter), `?topic_id=`, `?subject_id=`, `?limit=`, `?cursor=`. Returns `{ request_id, items, nextCursor, hasMore }`; each item includes `rank_position` (0-based), `ingestSource` (e.g. `"videoelephant"` when from MRSS). Optional query `?request_id=` for event correlation (if omitted, backend generates one). Use `request_id` and `rank_position` when posting events. Full item shape: `id`, `guid`, `title`, `url`, `mp4Url`, `thumbnailUrl`, `thumbnailUrls`, `durationMs`, `primaryCategory` (single `{ id, name, slug }`), `secondaryLabels` (string[]), `categories`, `topics`, `subjects`, vote counts, `like_by_you`, `upvote_by_you`, `supervote_by_you`.
 - **Categories** (app-scoped; app via `app_id`, `X-App-Id`, or JWT)
   - `GET /api/categories` — list taxonomy categories for the app. Returns `{ categories: [{ id, name, slug }] }`.
 - **Taxonomy** (controlled vocabulary; app via `app_id`, `X-App-Id`, or JWT)
@@ -73,6 +73,11 @@ Node.js backend with **TypeScript**, **Fastify**, **Prisma**, **Postgres/NeonDB*
   - `GET /api/ingest-default-rules` — list rules (source_key → default category/topic/subject IDs).
   - `POST /api/ingest-default-rules` — create/update rule. Body: `sourceKey`, optional `defaultCategoryIds`, `defaultTopicIds`, `defaultSubjectIds`.
   - `DELETE /api/ingest-default-rules/:ruleId` — delete rule.
+- **Content providers (MRSS)** (M3; require `Authorization: Bearer <token>`; app from JWT)
+  - `GET /api/content-providers` — list MRSS content providers for the app.
+  - `POST /api/content-providers` — create provider. Body: `sourceKey`, `mrssUrl`, `ingestUserId` (user who will own ingested videos; must have profile in app), optional `name`, `defaultPrimaryCategoryId` (category UUID). Auth for the MRSS URL (e.g. Basic) from env: `MRSS_<SOURCE_KEY_UPPER>_USERNAME`, `MRSS_<SOURCE_KEY_UPPER>_PASSWORD`.
+- **Admin ingest (MRSS)** (trigger ingest; require `Authorization: Bearer <token>`; app from JWT)
+  - `POST /api/admin/ingest/mrss` — run MRSS ingest. Body: optional `appId` (default: token app), optional `sourceKey` (if omitted, runs all active providers for the app). Returns `{ fetched, created, skipped, errors }` per provider.
 - **Video create/get/update** (require `Authorization: Bearer <token>`)
   - `POST /api/videos` — create video. **Required:** `durationMs`, `primaryCategoryId` (single category UUID from taxonomy; powers “Same Category” and feed), and either `videoUrl` or `videoBase64`. **Optional:** `title`, `description`, `secondaryLabels` (e.g. `["Weather", "Fashion"]`), `ingestSource`, `aspectRatio`, `thumbnailBase64`; `topicIds`/`subjectIds` are optional (for future derivation; MRSS typically omits them). Tags are validated against app taxonomy. The source MP4 is uploaded to R2 immediately and the video is set to **`status: "ready"`** so it appears in the feed (playable as MP4). In the background, the job transcodes to HLS and generates thumbnails. **Requires FFmpeg** and Cloudflare R2 env vars.
   - `GET /api/videos` — list videos you posted (same app as token). Query: `?limit=`, `?cursor=`. Returns `{ videos, nextCursor, hasMore }` with `primaryCategory`, `secondaryLabels` per video.
@@ -140,6 +145,21 @@ When a video is created via `POST /api/videos` (with `videoUrl` or `videoBase64`
 **Requirements:** The app uses the **ffmpeg-static** package (bundled FFmpeg) when available; otherwise **FFmpeg** must be installed and on `PATH`. Set Cloudflare R2 env vars in `.env` (see `.env.example`). Videos appear in the feed only when `status` is `"ready"` (after processing completes).
 
 **Background jobs:** Video processing runs via **BullMQ** and **Redis**. Set `REDIS_URL` (or `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`) in `.env`. If Redis is not available, processing runs in-process and a warning is logged.
+
+## MRSS and Content Provider feeds (VideoElephant)
+
+Video content can be ingested from **MRSS (Media RSS)** feeds. Each Content Provider has its own feed URL and credentials (M3: individual accounts per provider).
+
+### VideoElephant MRSS (vertical content)
+
+- **Platform:** [platform.videoelephant.com](https://platform.videoelephant.com)
+- **Feed URL (dynamic):** `https://mrss.videoelephant.com/mrss`
+- **Vertical content:** To retain vertical aspect ratio, append `?original=true`:
+  - **Vertical feed URL:** `https://mrss.videoelephant.com/mrss?original=true`
+- **Authentication:** Basic auth. Store credentials in env: `MRSS_VIDEOELEPHANT_USERNAME`, `MRSS_VIDEOELEPHANT_PASSWORD` (see [docs/ENV.md](docs/ENV.md) § Optional MRSS). Do not commit secrets. Credentials can also be embedded in the URL if the ingest client supports it; otherwise pass as Basic auth on each request.
+- **New feeds:** New vertical feeds onboarded by VideoElephant are auto-added to this feed; no URL change required.
+
+See the client-provided **VideoElephant MRSS Delivery Guide** (PDF) for full spec. Ingest jobs should fetch the MRSS XML, parse items, and create/update videos via `POST /api/videos` (or internal equivalent) with `ingestSource` set to the provider (e.g. `videoelephant`) and `primaryCategoryId` from app taxonomy (ingest default rules can supply defaults per `ingestSource`).
 
 ## Tech
 
