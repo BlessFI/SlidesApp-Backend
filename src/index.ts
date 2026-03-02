@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { startVideoProcessWorker } from "./queues/videoQueue.js";
