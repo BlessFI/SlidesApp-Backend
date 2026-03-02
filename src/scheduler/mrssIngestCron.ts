@@ -75,4 +75,10 @@ export function startMrssIngestCron(): void {
     });
   });
   console.log("[MRSS cron] Scheduled hourly ingest for appId=" + config.appId + " sourceKey=" + config.sourceKey);
+
+  // Run once on startup so you don't wait up to an hour for the first batch
+  runIngest().catch((e) => {
+    console.error("[MRSS cron] Startup ingest error:", e);
+    isRunning = false;
+  });
 }
