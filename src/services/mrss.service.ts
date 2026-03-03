@@ -120,15 +120,22 @@ export async function runMrssIngestForProvider(
     return result;
   }
 
-  const creatorId = provider.ingestUserId;
-
   for (const entry of items) {
     const guid = getString(entry, "guid") ?? getString(entry, "link") ?? getString(entry, "id");
+    const credit = getMediaCredit(entry);
     if (guid) {
       const existing = await prisma.video.findFirst({
         where: { appId, guid },
+        select: { id: true, credit: true },
       });
       if (existing) {
+        // Backfill credit on already-ingested videos when possible
+        if (credit && (!existing.credit || existing.credit.trim() !== credit)) {
+          await prisma.video.update({
+            where: { id: existing.id },
+            data: { credit },
+          });
+        }
         result.skipped++;
         continue;
       }
@@ -149,7 +156,7 @@ export async function runMrssIngestForProvider(
     try {
       const created = await videoService.createVideo({
         appId,
-        creatorId,
+        creatorId: provider.ingestUserId,
         primaryCategoryId: defaultCategoryId,
         ingestSource: sourceKey,
         guid: guid ?? undefined,
@@ -160,6 +167,13 @@ export async function runMrssIngestForProvider(
         waitUntilProcessed: opts?.waitForProcessing,
       });
       result.created++;
+      // Set credit on newly-ingested videos so we can attribute views/revenue per underlying provider (e.g. Bloomberg).
+      if (credit && created?.id) {
+        await prisma.video.update({
+          where: { id: created.id },
+          data: { credit },
+        });
+      }
       if (opts?.waitForProcessing && created?.id) {
         await waitUntilVideoReady(created.id, opts.waitForProcessingPollMs ?? 600_000, opts.waitForProcessingPollIntervalMs ?? 2000);
       }
@@ -213,6 +227,18 @@ function getMediaString(obj: Record<string, unknown>, key: string): string | nul
   const m = media as Record<string, unknown>;
   const v = m[key] ?? m[`media:${key}`];
   if (typeof v === "string") return v.trim() || null;
+  return null;
+}
+
+function getMediaCredit(item: Record<string, unknown>): string | null {
+  const media = item["media:group"] ?? item.media;
+  if (!media || typeof media !== "object") return null;
+  const m = media as Record<string, unknown>;
+  const v = m["media:credit"] ?? m["credit"];
+  if (typeof v === "string") return v.trim() || null;
+  if (v && typeof v === "object" && "#text" in v) {
+    return String((v as { "#text": unknown })["#text"]).trim() || null;
+  }
   return null;
 }
 

@@ -15,6 +15,7 @@
     "db:seed-reels": "npx tsx scripts/seed-reels.ts",
     "ingest:mrss": "npx tsx scripts/run-mrss-ingest.ts",
     "reprocess:stuck": "npx tsx scripts/reprocess-stuck-videos.ts",
+    "backfill:mrss-credit": "npx tsx scripts/backfill-mrss-credit.ts",
     "test": "npx tsx --test tests/multi-tenant.test.ts"
   },
   "prisma": {
