@@ -16,6 +16,7 @@
     "ingest:mrss": "npx tsx scripts/run-mrss-ingest.ts",
     "reprocess:stuck": "npx tsx scripts/reprocess-stuck-videos.ts",
     "backfill:mrss-credit": "npx tsx scripts/backfill-mrss-credit.ts",
+    "reassign:mrss-providers": "npx tsx scripts/reassign-mrss-providers.ts",
     "test": "npx tsx --test tests/multi-tenant.test.ts"
   },
   "prisma": {
