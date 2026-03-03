@@ -120,6 +120,12 @@ export async function runMrssIngestForProvider(
     return result;
   }
 
+  // Cache mapping from credit -> { creatorId, ingestSource } so we only look up per credit once
+  const creditOwnerCache = new Map<
+    string,
+    { creatorId: string; ingestSource: string }
+  >();
+
   for (const entry of items) {
     const guid = getString(entry, "guid") ?? getString(entry, "link") ?? getString(entry, "id");
     const credit = getMediaCredit(entry);
@@ -154,11 +160,46 @@ export async function runMrssIngestForProvider(
     const durationMs = durationSec != null ? Math.round(durationSec * 1000) : 60000;
 
     try {
+      // Resolve which account/profile should own this video. If there is an active
+      // ContentProvider whose name matches media:credit for this app, use its ingestUserId
+      // and sourceKey; otherwise fall back to the MRSS ContentProvider that owns the feed.
+      let creatorId = provider.ingestUserId;
+      let ingestSourceForVideo = sourceKey;
+      const creditKey = credit?.trim();
+      if (creditKey) {
+        const cached = creditOwnerCache.get(creditKey);
+        if (cached) {
+          creatorId = cached.creatorId;
+          ingestSourceForVideo = cached.ingestSource;
+        } else {
+          const creditProvider = await prisma.contentProvider.findFirst({
+            where: {
+              appId,
+              isActive: true,
+              name: creditKey,
+            },
+          });
+          if (creditProvider) {
+            creatorId = creditProvider.ingestUserId;
+            ingestSourceForVideo = creditProvider.sourceKey;
+            creditOwnerCache.set(creditKey, {
+              creatorId,
+              ingestSource: ingestSourceForVideo,
+            });
+          } else {
+            creditOwnerCache.set(creditKey, {
+              creatorId,
+              ingestSource: ingestSourceForVideo,
+            });
+          }
+        }
+      }
+
       const created = await videoService.createVideo({
         appId,
-        creatorId: provider.ingestUserId,
+        creatorId,
         primaryCategoryId: defaultCategoryId,
-        ingestSource: sourceKey,
+        ingestSource: ingestSourceForVideo,
         guid: guid ?? undefined,
         title: title || null,
         description,

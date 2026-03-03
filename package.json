@@ -4,9 +4,9 @@
   "description": "Node.js backend with Fastify, TypeScript, Prisma, JWT auth",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
-    "dev": "nodemon",
-    "start": "node dist/index.js",
+    "build": "node api.js && tsc",
+    "dev": "node api.js && nodemon",
+    "start": "node api.js && node dist/index.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
@@ -16,6 +16,7 @@
     "ingest:mrss": "npx tsx scripts/run-mrss-ingest.ts",
     "reprocess:stuck": "npx tsx scripts/reprocess-stuck-videos.ts",
     "backfill:mrss-credit": "npx tsx scripts/backfill-mrss-credit.ts",
+    "reassign:mrss-providers": "npx tsx scripts/reassign-mrss-providers.ts",
     "test": "npx tsx --test tests/multi-tenant.test.ts"
   },
   "prisma": {
